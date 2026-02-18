@@ -78,6 +78,6 @@ smart-study-ai/
 
 ## ⚠️ Note importanti
 
-- La chiave API deve avere accesso a **Gemini 2.5 Pro**
+- La chiave API deve avere accesso a **Gemini 3 flash**
 - L'estrazione PDF funziona solo con PDF con testo selezionabile (non scansioni)
 - Il file `.env` non deve mai essere committato su Git
