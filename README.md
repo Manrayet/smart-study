@@ -5,7 +5,7 @@ Trasforma testi complessi o file PDF in dashboard di apprendimento avanzate usan
 ## ✨ Funzionalità
 
 - **Upload PDF** — Estrazione testo lato client con `pdfjs-dist` (nessun server richiesto)
-- **Analisi AI** — Gemini 2.5 Pro genera summary, glossario e quiz in JSON strutturato
+- **Analisi AI** — Gemini genera summary, glossario e quiz in JSON strutturato
 - **Studio Deep** — Riassunto accademico in paragrafi
 - **Glossario** — Concetti chiave con definizioni approfondite e esempi
 - **Simulazione Esame** — Quiz interattivo basato sulla Tassonomia di Bloom (10 domande)
@@ -38,14 +38,6 @@ VITE_GEMINI_API_KEY=la_tua_chiave_reale
 npm run dev
 ```
 
-Apri [http://localhost:5173](http://localhost:5173) nel browser.
-
-### 4. Build per produzione
-
-```bash
-npm run build
-npm run preview
-```
 
 ## 📁 Struttura del progetto
 
@@ -71,7 +63,7 @@ smart-study-ai/
 | Tecnologia | Uso |
 |---|---|
 | **Vite + React 18** | Framework frontend |
-| **@google/generative-ai** | SDK Gemini 2.5 Pro |
+| **@google/generative-ai** | SDK Gemini |
 | **pdfjs-dist** | Estrazione testo PDF lato client |
 | **Tailwind CSS** | Styling utility-first |
 | **lucide-react** | Icone |
