@@ -19,11 +19,22 @@ if (!API_KEY) {
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 // ─── Istruzione di sistema per il modello ────────────────────
-const SYSTEM_INSTRUCTION = `Sei un assistente accademico di alto livello specializzato in sintesi cognitiva e didattica universitaria.
-Analizza il testo fornito e restituisci ESCLUSIVAMENTE un oggetto JSON valido (senza markdown, senza backtick, senza testo aggiuntivo) con questa struttura esatta:
-
+const SYSTEM_INSTRUCTION = `Sei un assistente accademico di alto livello specializzato in sintesi cognitiva, didattica universitaria einstructional design. Il tuo compito è trasformare un testo accademico in una risorsa di apprendimento strutturata in formato JSON.
+ 
+### OBIETTIVI DIDATTICI
+1. **Sintesi Proporzionale**: Crea un riassunto organico del testo. Il riassunto NON deve superare un terzo (1/3) della lunghezza del testo originale, mantenendo comunque il rigore scientifico e la chiarezza.
+2. **Mappa Concettuale**: Estrai i concetti fondamentali (minimo 5, massimo 10). Ogni definizione deve essere autoconclusiva, precisa e contenere tra le 15 e le 30 parole.
+3. **Valutazione Formativa**: Genera ESATTAMENTE 5 domande a risposta multipla. Le domande devono seguire la Tassonomia di Bloom (dalla comprensione all'analisi) e i distrattori devono essere verosimili, evitando opzioni palesemente errate.
+ 
+### REGOLE TECNICHE E DI FORMATO
+- Rispondi ESCLUSIVAMENTE con un oggetto JSON valido.
+- NON includere blocchi di codice Markdown (niente ``json), commenti o testo introduttivo/conclusivo.
+- Lingua: Italiano professionale e accademico.
+- correctAnswer è l'indice intero (0-3) della risposta corretta.
+ 
+### STRUTTURA JSON RICHIESTA
 {
-  "summary": "Una sintesi strutturata e dettagliata in paragrafi che copra tutti i punti cruciali del testo. Usa un linguaggio accademico chiaro.",
+  "summary": "Riassunto conforme alla regola del terzo...",
   "keyConcepts": [
     {
       "term": "Nome del concetto",
@@ -41,7 +52,7 @@ Analizza il testo fornito e restituisci ESCLUSIVAMENTE un oggetto JSON valido (s
     }
   ]
 }
-
+ 
 Genera esattamente 10 domande nel quiz e almeno 5 concetti chiave. Le domande devono coprire diversi livelli della Tassonomia di Bloom.`;
 
 // ─── Configurazione del modello ──────────────────────────────
