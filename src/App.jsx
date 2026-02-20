@@ -1,38 +1,30 @@
 // ============================================================
-// App.jsx — Smart Study AI
-// Componente principale che gestisce upload PDF/testo,
-// chiamate a Gemini, persistenza su localStorage e
-// la dashboard di apprendimento a schede.
+// App.jsx — Smart Study AI v2
+// Architettura completa: Auth · Chat persistenti · Quiz tracking
+// Tema chiaro/scuro · PocketBase backend
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import {
-  BookOpen,
-  Brain,
-  FileText,
-  Upload,
-  Sparkles,
-  ChevronRight,
-  CheckCircle,
-  XCircle,
-  RotateCcw,
-  Trophy,
-  Layers,
-  GraduationCap,
-  AlertCircle,
-  X,
+  BookOpen, Brain, FileText, Upload, Sparkles, ChevronRight,
+  CheckCircle, XCircle, RotateCcw, Trophy, Layers, GraduationCap,
+  AlertCircle, X, MessageSquare, Trash2, Plus, Sun, Moon,
+  LogOut, User, BarChart2, Clock, Pencil, ChevronLeft, Eye,
+  TrendingUp, Award,
 } from "lucide-react";
 import { analyzeText } from "./services/gemini";
+import {
+  loginUser, registerUser, updateUserTheme,
+  createChat, getUserChats, deleteChat, updateChatTitle,
+  saveQuizResult, getChatQuizResults, getUserQuizResults,
+} from "./services/pocketbase";
 
-// ─── Configurazione PDF.js Worker ───────────────────────────
-// Usa la versione dinamica del pacchetto installato per evitare mismatch
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+// ─── PDF.js Worker ───────────────────────────────────────────
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
-// ─── Chiave localStorage ─────────────────────────────────────
-const STORAGE_KEY = "smart_study_ai_session";
-
-// ─── Messaggi di caricamento dinamici ───────────────────────
+// ─── Messaggi loading dinamici ────────────────────────────────
 const LOADING_MESSAGES = [
   "Analizzando la struttura del testo...",
   "Identificando i concetti chiave...",
@@ -44,6 +36,25 @@ const LOADING_MESSAGES = [
   "Ottimizzando la dashboard di apprendimento...",
 ];
 
+// ─── Tema helpers ─────────────────────────────────────────────
+const THEME_KEY = "ssa_theme";
+
+// ============================================================
+// COMPONENTE: ThemeProvider wrapper
+// ============================================================
+function useTheme(initialTheme = "dark") {
+  const [theme, setThemeState] = useState(initialTheme);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.classList.toggle("light-mode", theme === "light");
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
+
+  const setTheme = (t) => setThemeState(t);
+  return { theme, setTheme };
+}
+
 // ============================================================
 // COMPONENTE: LoadingScreen
 // ============================================================
@@ -51,50 +62,255 @@ function LoadingScreen() {
   const [msgIndex, setMsgIndex] = useState(0);
   const [dots, setDots] = useState("");
 
-  // Rotazione messaggi ogni 3 secondi
   useEffect(() => {
-    const msgTimer = setInterval(() => {
-      setMsgIndex((i) => (i + 1) % LOADING_MESSAGES.length);
-    }, 3000);
-    const dotsTimer = setInterval(() => {
-      setDots((d) => (d.length >= 3 ? "" : d + "."));
-    }, 500);
-    return () => {
-      clearInterval(msgTimer);
-      clearInterval(dotsTimer);
-    };
+    const t1 = setInterval(() => setMsgIndex(i => (i + 1) % LOADING_MESSAGES.length), 3000);
+    const t2 = setInterval(() => setDots(d => d.length >= 3 ? "" : d + "."), 500);
+    return () => { clearInterval(t1); clearInterval(t2); };
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-xl">
-      <div className="flex flex-col items-center gap-8 p-10 rounded-3xl bg-white/5 border border-white/10 shadow-2xl max-w-md w-full mx-4">
-        {/* Spinner animato */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-base/80 backdrop-blur-xl">
+      <div className="flex flex-col items-center gap-8 p-10 rounded-3xl card-glass shadow-2xl max-w-md w-full mx-4">
         <div className="relative w-24 h-24">
-          <div className="absolute inset-0 rounded-full border-4 border-indigo-500/20" />
-          <div className="absolute inset-0 rounded-full border-4 border-t-indigo-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
-          <div className="absolute inset-3 rounded-full border-4 border-t-transparent border-r-violet-400 border-b-transparent border-l-transparent animate-spin [animation-direction:reverse] [animation-duration:1.5s]" />
+          <div className="absolute inset-0 rounded-full border-4 border-accent/20" />
+          <div className="absolute inset-0 rounded-full border-4 border-t-accent border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+          <div className="absolute inset-3 rounded-full border-4 border-t-transparent border-r-accent2 border-b-transparent border-l-transparent animate-spin [animation-direction:reverse] [animation-duration:1.5s]" />
           <div className="absolute inset-0 flex items-center justify-center">
-            <Brain className="w-8 h-8 text-indigo-300 animate-pulse" />
+            <Brain className="w-8 h-8 text-accent animate-pulse" />
           </div>
         </div>
-
-        {/* Messaggio dinamico */}
         <div className="text-center min-h-[3rem]">
-          <p className="text-indigo-200 text-lg font-medium tracking-wide">
-            {LOADING_MESSAGES[msgIndex]}
-            <span className="text-indigo-400">{dots}</span>
+          <p className="text-text-primary text-lg font-medium tracking-wide">
+            {LOADING_MESSAGES[msgIndex]}<span className="text-accent">{dots}</span>
           </p>
-          <p className="text-slate-500 text-sm mt-2">
-            gemini-3-flash-preview sta elaborando
-          </p>
+          <p className="text-text-muted text-sm mt-2">gemini sta elaborando</p>
         </div>
-
-        {/* Barra di progresso animata */}
-        <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-indigo-500 via-violet-500 to-indigo-500 rounded-full animate-[shimmer_2s_linear_infinite] bg-[length:200%_100%]" />
+        <div className="w-full h-1.5 bg-border rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-accent via-accent2 to-accent rounded-full animate-[shimmer_2s_linear_infinite] bg-[length:200%_100%]" />
         </div>
       </div>
     </div>
+  );
+}
+
+// ============================================================
+// COMPONENTE: AuthPanel (Login / Register)
+// ============================================================
+function AuthPanel({ onLogin, theme, onToggleTheme }) {
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    setError(""); setLoading(true);
+    try {
+      if (mode === "login") {
+        const { token, record } = await loginUser(email, password);
+        onLogin(token, record);
+      } else {
+        await registerUser(email, password, name);
+        const { token, record } = await loginUser(email, password);
+        onLogin(token, record);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inputClass = "w-full px-4 py-3 rounded-xl bg-bg-card border border-border text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-all text-sm";
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6 bg-bg-base">
+      <button
+        onClick={onToggleTheme}
+        className="fixed top-4 right-4 p-2 rounded-lg bg-bg-card border border-border text-text-muted hover:text-text-primary transition-all"
+      >
+        {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+      </button>
+
+      <div className="w-full max-w-md space-y-6">
+        <div className="text-center space-y-3">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-sm font-medium">
+            <Sparkles className="w-4 h-4" />
+            gemini · Smart Study AI
+          </div>
+          <h1 className="text-4xl font-bold text-text-primary tracking-tight">
+            Bentornato
+          </h1>
+          <p className="text-text-muted">
+            {mode === "login" ? "Accedi al tuo spazio di studio" : "Crea il tuo account"}
+          </p>
+        </div>
+
+        <div className="card-glass rounded-2xl p-6 space-y-4">
+          {mode === "register" && (
+            <input className={inputClass} placeholder="Nome" value={name}
+              onChange={e => setName(e.target.value)} />
+          )}
+          <input className={inputClass} type="email" placeholder="Email" value={email}
+            onChange={e => setEmail(e.target.value)} />
+          <input className={inputClass} type="password" placeholder="Password" value={password}
+            onChange={e => setPassword(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleSubmit()} />
+
+          {error && (
+            <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />{error}
+            </div>
+          )}
+
+          <button
+            onClick={handleSubmit} disabled={loading}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-accent to-accent2 hover:opacity-90 disabled:opacity-50 text-white font-semibold transition-all shadow-lg"
+          >
+            {loading ? <RotateCcw className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
+            {mode === "login" ? "Accedi" : "Registrati"}
+          </button>
+
+          <p className="text-center text-text-muted text-sm">
+            {mode === "login" ? "Non hai un account?" : "Hai già un account?"}{" "}
+            <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}
+              className="text-accent hover:underline font-medium">
+              {mode === "login" ? "Registrati" : "Accedi"}
+            </button>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// COMPONENTE: Sidebar — lista chat
+// ============================================================
+function Sidebar({ chats, activeChatId, onSelectChat, onNewChat, onDeleteChat, onRenameChat, user, onLogout, theme, onToggleTheme }) {
+  const [editingId, setEditingId] = useState(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  const startEdit = (chat, e) => {
+    e.stopPropagation();
+    setEditingId(chat.id);
+    setEditTitle(chat.title);
+  };
+
+  const commitEdit = async (chatId) => {
+    if (editTitle.trim()) await onRenameChat(chatId, editTitle.trim());
+    setEditingId(null);
+  };
+
+  const confirmDelete = (chatId, e) => {
+    e.stopPropagation();
+    setDeleteConfirm(chatId);
+  };
+
+  return (
+    <aside className="w-72 shrink-0 flex flex-col h-screen bg-bg-sidebar border-r border-border">
+      {/* Logo */}
+      <div className="p-4 border-b border-border flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-lg bg-accent/10">
+            <Brain className="w-5 h-5 text-accent" />
+          </div>
+          <span className="font-bold text-text-primary text-sm">Smart Study AI</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={onToggleTheme}
+            className="p-1.5 rounded-lg hover:bg-bg-card text-text-muted hover:text-text-primary transition-all">
+            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Nuova analisi */}
+      <div className="p-3">
+        <button onClick={onNewChat}
+          className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent/10 hover:bg-accent/20 border border-accent/20 text-accent text-sm font-medium transition-all">
+          <Plus className="w-4 h-4" />
+          Nuova Analisi
+        </button>
+      </div>
+
+      {/* Lista chat */}
+      <div className="flex-1 overflow-y-auto px-2 space-y-1">
+        {chats.length === 0 ? (
+          <div className="text-center text-text-muted text-xs py-8 px-4">
+            <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            Nessuna analisi ancora.<br />Inizia creandone una!
+          </div>
+        ) : (
+          chats.map(chat => (
+            <div key={chat.id}
+              onClick={() => onSelectChat(chat)}
+              className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+                activeChatId === chat.id
+                  ? "bg-accent/15 border border-accent/25 text-text-primary"
+                  : "hover:bg-bg-card text-text-muted hover:text-text-primary"
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-60" />
+              <div className="flex-1 min-w-0">
+                {editingId === chat.id ? (
+                  <input
+                    value={editTitle}
+                    onChange={e => setEditTitle(e.target.value)}
+                    onBlur={() => commitEdit(chat.id)}
+                    onKeyDown={e => e.key === "Enter" && commitEdit(chat.id)}
+                    onClick={e => e.stopPropagation()}
+                    className="w-full bg-transparent border-b border-accent text-text-primary text-xs outline-none"
+                    autoFocus
+                  />
+                ) : (
+                  <p className="text-xs font-medium truncate">{chat.title}</p>
+                )}
+                <p className="text-[10px] text-text-muted mt-0.5">
+                  {new Date(chat.created).toLocaleDateString("it-IT")}
+                </p>
+              </div>
+              <div className="shrink-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={e => startEdit(chat, e)}
+                  className="p-1 rounded hover:bg-bg-base text-text-muted hover:text-text-primary">
+                  <Pencil className="w-3 h-3" />
+                </button>
+                {deleteConfirm === chat.id ? (
+                  <button onClick={e => { e.stopPropagation(); onDeleteChat(chat.id); setDeleteConfirm(null); }}
+                    className="p-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                ) : (
+                  <button onClick={e => confirmDelete(chat.id, e)}
+                    className="p-1 rounded hover:bg-bg-base text-text-muted hover:text-red-400">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Footer utente */}
+      <div className="p-3 border-t border-border">
+        <div className="flex items-center gap-2 px-2 py-2 rounded-xl">
+          <div className="w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center shrink-0">
+            <User className="w-3.5 h-3.5 text-accent" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-text-primary truncate">{user?.name || user?.email}</p>
+            <p className="text-[10px] text-text-muted truncate">{user?.email}</p>
+          </div>
+          <button onClick={onLogout}
+            className="p-1.5 rounded-lg hover:bg-bg-card text-text-muted hover:text-red-400 transition-all">
+            <LogOut className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    </aside>
   );
 }
 
@@ -108,180 +324,104 @@ function UploadPanel({ onAnalyze, isLoading }) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Estrazione testo da PDF usando pdfjs-dist
   const extractPdfText = async (file) => {
-    setError("");
-    setFileName(file.name);
+    setError(""); setFileName(file.name);
     try {
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       let fullText = "";
-
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        const pageText = content.items.map((item) => item.str).join(" ");
-        fullText += pageText + "\n\n";
+        fullText += content.items.map(item => item.str).join(" ") + "\n\n";
       }
-
-      if (!fullText.trim()) {
-        throw new Error(
-          "Il PDF sembra essere scansionato o non contiene testo selezionabile."
-        );
-      }
+      if (!fullText.trim()) throw new Error("Il PDF non contiene testo selezionabile.");
       setText(fullText.trim());
     } catch (err) {
-      setError(`Errore PDF: ${err.message}`);
-      setFileName("");
+      setError(`Errore PDF: ${err.message}`); setFileName("");
     }
   };
 
-  // Gestione drop file
   const handleDrop = useCallback((e) => {
-    e.preventDefault();
-    setIsDragging(false);
+    e.preventDefault(); setIsDragging(false);
     const file = e.dataTransfer.files[0];
-    if (file?.type === "application/pdf") {
-      extractPdfText(file);
-    } else {
-      setError("Formato non supportato. Carica un file PDF.");
-    }
+    if (file?.type === "application/pdf") extractPdfText(file);
+    else setError("Formato non supportato. Carica un file PDF.");
   }, []);
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) extractPdfText(file);
-  };
-
   const handleSubmit = () => {
-    if (!text.trim()) {
-      setError("Inserisci del testo o carica un PDF prima di continuare.");
-      return;
-    }
-    if (text.trim().length < 100) {
-      setError("Il testo è troppo breve. Inserisci almeno 100 caratteri.");
-      return;
-    }
-    setError("");
-    onAnalyze(text);
-  };
-
-  const clearFile = () => {
-    setFileName("");
-    setText("");
-    setError("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (!text.trim()) { setError("Inserisci del testo o carica un PDF."); return; }
+    if (text.trim().length < 100) { setError("Testo troppo breve. Almeno 100 caratteri."); return; }
+    setError(""); onAnalyze(text);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
+    <div className="flex-1 flex items-center justify-center p-6 bg-bg-base min-h-screen">
       <div className="w-full max-w-2xl space-y-6">
-        {/* Header */}
         <div className="text-center space-y-3">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-sm font-medium">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-sm font-medium">
             <Sparkles className="w-4 h-4" />
-            Powered by gemini-3-flash-preview
+            gemini · Nuova Analisi
           </div>
-          <h1 className="text-5xl font-bold text-white tracking-tight">
-            Smart Study{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">
-              AI
-            </span>
-          </h1>
-          <p className="text-slate-400 text-lg">
-            Trasforma qualsiasi testo in una dashboard di apprendimento avanzata
-          </p>
+          <h2 className="text-4xl font-bold text-text-primary tracking-tight">
+            Cosa vuoi studiare?
+          </h2>
+          <p className="text-text-muted">Carica un PDF o incolla il testo da analizzare</p>
         </div>
 
-        {/* Pannello upload */}
-        <div className="glass-card rounded-2xl p-6 space-y-4">
-          {/* Zona drag-and-drop PDF */}
+        <div className="card-glass rounded-2xl p-6 space-y-4">
           <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragging(true);
-            }}
+            onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
             className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-300 ${
-              isDragging
-                ? "border-indigo-400 bg-indigo-500/10"
-                : "border-white/10 hover:border-indigo-500/50 hover:bg-white/5"
+              isDragging ? "border-accent bg-accent/10" : "border-border hover:border-accent/50 hover:bg-bg-card"
             }`}
           >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf"
-              onChange={handleFileChange}
-              className="hidden"
-            />
+            <input ref={fileInputRef} type="file" accept=".pdf" onChange={e => e.target.files[0] && extractPdfText(e.target.files[0])} className="hidden" />
             {fileName ? (
               <div className="flex items-center justify-center gap-3">
-                <FileText className="w-6 h-6 text-indigo-400" />
-                <span className="text-indigo-300 font-medium">{fileName}</span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    clearFile();
-                  }}
-                  className="text-slate-500 hover:text-red-400 transition-colors"
-                >
+                <FileText className="w-6 h-6 text-accent" />
+                <span className="text-accent font-medium">{fileName}</span>
+                <button onClick={e => { e.stopPropagation(); setFileName(""); setText(""); }} className="text-text-muted hover:text-red-400">
                   <X className="w-4 h-4" />
                 </button>
               </div>
             ) : (
               <>
-                <Upload className="w-10 h-10 text-slate-500 mx-auto mb-3" />
-                <p className="text-slate-300 font-medium">
-                  Trascina un PDF qui
-                </p>
-                <p className="text-slate-500 text-sm mt-1">
-                  oppure clicca per selezionare
-                </p>
+                <Upload className="w-10 h-10 text-text-muted mx-auto mb-3" />
+                <p className="text-text-primary font-medium">Trascina un PDF qui</p>
+                <p className="text-text-muted text-sm mt-1">oppure clicca per selezionare</p>
               </>
             )}
           </div>
 
-          {/* Separatore */}
           <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-white/10" />
-            <span className="text-slate-500 text-sm font-medium">
-              oppure scrivi direttamente
-            </span>
-            <div className="flex-1 h-px bg-white/10" />
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-text-muted text-sm">oppure scrivi direttamente</span>
+            <div className="flex-1 h-px bg-border" />
           </div>
 
-          {/* Textarea testo */}
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Incolla qui il testo del libro, appunti, articoli accademici..."
+          <textarea value={text} onChange={e => setText(e.target.value)}
+            placeholder="Incolla qui appunti, articoli, capitoli di libri..."
             rows={8}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-600 resize-none focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/30 transition-all text-sm leading-relaxed"
+            className="w-full bg-bg-card border border-border rounded-xl px-4 py-3 text-text-primary placeholder-text-muted resize-none focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all text-sm leading-relaxed"
           />
 
-          {/* Contatore caratteri */}
-          <div className="flex justify-between items-center text-xs text-slate-600">
+          <div className="flex justify-between text-xs text-text-muted">
             <span>{text.length.toLocaleString()} caratteri</span>
-            <span>Min. 100 caratteri richiesti</span>
+            <span>Min. 100 caratteri</span>
           </div>
 
-          {/* Errore */}
           {error && (
-            <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 text-sm">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-              {error}
+            <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />{error}
             </div>
           )}
 
-          {/* Bottone analisi */}
-          <button
-            onClick={handleSubmit}
-            disabled={isLoading || !text.trim()}
-            className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold transition-all duration-300 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40"
-          >
+          <button onClick={handleSubmit} disabled={isLoading || !text.trim()}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-accent to-accent2 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold transition-all shadow-lg">
             <Brain className="w-5 h-5" />
             Genera Dashboard di Apprendimento
             <ChevronRight className="w-4 h-4" />
@@ -293,37 +433,24 @@ function UploadPanel({ onAnalyze, isLoading }) {
 }
 
 // ============================================================
-// COMPONENTE: SummaryTab — Scheda Studio Deep
+// COMPONENTE: SummaryTab
 // ============================================================
 function SummaryTab({ summary }) {
-  // Divide il summary in paragrafi per una migliore leggibilità
-  const paragraphs = summary
-    .split(/\n+/)
-    .filter((p) => p.trim().length > 0);
-
+  const paragraphs = summary.split(/\n+/).filter(p => p.trim());
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
-          <BookOpen className="w-5 h-5 text-indigo-400" />
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-lg bg-accent/10 border border-accent/20">
+          <BookOpen className="w-5 h-5 text-accent" />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-white">Studio Deep</h2>
-          <p className="text-slate-400 text-sm">
-            Sintesi strutturata del contenuto
-          </p>
+          <h2 className="text-xl font-bold text-text-primary">Studio Deep</h2>
+          <p className="text-text-muted text-sm">Sintesi strutturata del contenuto</p>
         </div>
       </div>
-
-      <div className="glass-card rounded-2xl p-6 space-y-4">
-        {paragraphs.map((paragraph, index) => (
-          <p
-            key={index}
-            className="text-slate-300 leading-relaxed text-[15px]"
-            style={{ animationDelay: `${index * 0.1}s` }}
-          >
-            {paragraph}
-          </p>
+      <div className="card-glass rounded-2xl p-6 space-y-4">
+        {paragraphs.map((p, i) => (
+          <p key={i} className="text-text-secondary leading-relaxed text-[15px]">{p}</p>
         ))}
       </div>
     </div>
@@ -331,59 +458,41 @@ function SummaryTab({ summary }) {
 }
 
 // ============================================================
-// COMPONENTE: GlossaryTab — Scheda Concetti Chiave
+// COMPONENTE: GlossaryTab
 // ============================================================
 function GlossaryTab({ keyConcepts }) {
   const [expanded, setExpanded] = useState(null);
-
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2 rounded-lg bg-violet-500/10 border border-violet-500/20">
-          <Layers className="w-5 h-5 text-violet-400" />
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-lg bg-accent2/10 border border-accent2/20">
+          <Layers className="w-5 h-5 text-accent2" />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-white">Glossario</h2>
-          <p className="text-slate-400 text-sm">
-            {keyConcepts.length} concetti chiave identificati
-          </p>
+          <h2 className="text-xl font-bold text-text-primary">Glossario</h2>
+          <p className="text-text-muted text-sm">{keyConcepts.length} concetti chiave identificati</p>
         </div>
       </div>
-
       <div className="grid gap-3">
-        {keyConcepts.map((concept, index) => (
-          <div
-            key={index}
-            className="glass-card rounded-xl overflow-hidden cursor-pointer hover:border-violet-500/30 transition-all duration-300"
-            onClick={() => setExpanded(expanded === index ? null : index)}
+        {keyConcepts.map((concept, i) => (
+          <div key={i}
+            className="card-glass rounded-xl overflow-hidden cursor-pointer hover:border-accent2/30 transition-all"
+            onClick={() => setExpanded(expanded === i ? null : i)}
           >
             <div className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
-                <span className="flex items-center justify-center w-7 h-7 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs font-bold">
-                  {index + 1}
-                </span>
-                <h3 className="text-white font-semibold">{concept.term}</h3>
+                <span className="flex items-center justify-center w-7 h-7 rounded-full bg-accent2/10 border border-accent2/20 text-accent2 text-xs font-bold">{i + 1}</span>
+                <h3 className="text-text-primary font-semibold">{concept.term}</h3>
               </div>
-              <ChevronRight
-                className={`w-4 h-4 text-slate-500 transition-transform duration-300 ${
-                  expanded === index ? "rotate-90" : ""
-                }`}
-              />
+              <ChevronRight className={`w-4 h-4 text-text-muted transition-transform duration-300 ${expanded === i ? "rotate-90" : ""}`} />
             </div>
-
-            {expanded === index && (
-              <div className="px-4 pb-4 space-y-3 border-t border-white/5 pt-3">
-                <p className="text-slate-300 text-sm leading-relaxed">
-                  {concept.definition}
-                </p>
+            {expanded === i && (
+              <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
+                <p className="text-text-secondary text-sm leading-relaxed">{concept.definition}</p>
                 {concept.example && (
-                  <div className="flex gap-2 px-3 py-2 rounded-lg bg-violet-500/5 border border-violet-500/10">
-                    <span className="text-violet-400 text-xs font-semibold shrink-0 mt-0.5">
-                      Esempio:
-                    </span>
-                    <p className="text-slate-400 text-xs leading-relaxed">
-                      {concept.example}
-                    </p>
+                  <div className="flex gap-2 px-3 py-2 rounded-lg bg-accent2/5 border border-accent2/10">
+                    <span className="text-accent2 text-xs font-semibold shrink-0 mt-0.5">Esempio:</span>
+                    <p className="text-text-muted text-xs leading-relaxed">{concept.example}</p>
                   </div>
                 )}
               </div>
@@ -396,247 +505,366 @@ function GlossaryTab({ keyConcepts }) {
 }
 
 // ============================================================
-// COMPONENTE: QuizTab — Scheda Simulazione Esame
+// COMPONENTE: QuizTab — con salvataggio risultati
 // ============================================================
-function QuizTab({ quiz }) {
+function QuizTab({ quiz, chatId, userId, token, onQuizComplete }) {
   const [currentQ, setCurrentQ] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [showExplanation, setShowExplanation] = useState(false);
   const [score, setScore] = useState(0);
   const [completed, setCompleted] = useState(false);
-  const [answeredQuestions, setAnsweredQuestions] = useState([]);
+  const [answers, setAnswers] = useState([]);
+  const [saving, setSaving] = useState(false);
 
   const question = quiz[currentQ];
   const isCorrect = selectedAnswer === question?.correctAnswer;
   const percentage = Math.round((score / quiz.length) * 100);
 
-  const handleAnswer = (optionIndex) => {
-    if (selectedAnswer !== null) return; // Già risposto
-    setSelectedAnswer(optionIndex);
+  const handleAnswer = (idx) => {
+    if (selectedAnswer !== null) return;
+    const correct = idx === question.correctAnswer;
+    setSelectedAnswer(idx);
     setShowExplanation(true);
-    if (optionIndex === question.correctAnswer) {
-      setScore((s) => s + 1);
-    }
-    setAnsweredQuestions((prev) => [
-      ...prev,
-      {
-        correct: optionIndex === question.correctAnswer,
-        question: question.question,
-      },
-    ]);
+    if (correct) setScore(s => s + 1);
+    setAnswers(prev => [...prev, {
+      question: question.question,
+      selectedIndex: idx,
+      correct,
+      correctIndex: question.correctAnswer,
+    }]);
   };
 
   const handleNext = () => {
     if (currentQ + 1 >= quiz.length) {
-      setCompleted(true);
+      finishQuiz();
     } else {
-      setCurrentQ((q) => q + 1);
+      setCurrentQ(q => q + 1);
       setSelectedAnswer(null);
       setShowExplanation(false);
     }
   };
 
-  const handleReset = () => {
-    setCurrentQ(0);
-    setSelectedAnswer(null);
-    setShowExplanation(false);
-    setScore(0);
-    setCompleted(false);
-    setAnsweredQuestions([]);
+  const finishQuiz = async () => {
+    setCompleted(true);
+    // Calcola score finale (già aggiornato se l'ultima era corretta)
+    const finalScore = answers.filter(a => a.correct).length + (isCorrect ? 0 : 0);
+    const realScore = answers.filter(a => a.correct).length;
+    setSaving(true);
+    try {
+      await saveQuizResult(chatId, userId, realScore + (isCorrect ? 1 : 0), quiz.length, [...answers], token);
+      onQuizComplete?.();
+    } catch (e) {
+      console.error("Errore salvataggio quiz:", e);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // ── Schermata risultato finale ──
+  const handleReset = () => {
+    setCurrentQ(0); setSelectedAnswer(null);
+    setShowExplanation(false); setScore(0);
+    setCompleted(false); setAnswers([]);
+  };
+
   if (completed) {
+    const finalPerc = Math.round((answers.filter(a => a.correct).length / quiz.length) * 100);
     return (
       <div className="animate-fade-in">
-        <div className="glass-card rounded-2xl p-8 text-center space-y-6">
-          <div className="relative inline-block">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-indigo-500/30 flex items-center justify-center mx-auto">
-              <Trophy className="w-10 h-10 text-yellow-400" />
-            </div>
+        <div className="card-glass rounded-2xl p-8 text-center space-y-6">
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-accent/20 to-accent2/20 border border-accent/30 flex items-center justify-center mx-auto">
+            <Trophy className="w-10 h-10 text-yellow-400" />
           </div>
-
           <div>
-            <h2 className="text-3xl font-bold text-white">{percentage}%</h2>
-            <p className="text-slate-400 mt-1">
-              {score} su {quiz.length} risposte corrette
+            <h2 className="text-3xl font-bold text-text-primary">{finalPerc}%</h2>
+            <p className="text-text-muted mt-1">
+              {answers.filter(a => a.correct).length} su {quiz.length} risposte corrette
+            </p>
+            {saving && <p className="text-text-muted text-xs mt-1">Salvataggio in corso...</p>}
+            {!saving && <p className="text-emerald-400 text-xs mt-1">✓ Risultato salvato</p>}
+          </div>
+          <div className="w-full h-3 bg-bg-card rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all duration-1000 ${
+              finalPerc >= 70 ? "bg-gradient-to-r from-emerald-500 to-teal-400"
+              : finalPerc >= 50 ? "bg-gradient-to-r from-yellow-500 to-orange-400"
+              : "bg-gradient-to-r from-red-500 to-rose-400"
+            }`} style={{ width: `${finalPerc}%` }} />
+          </div>
+          <div className="px-4 py-3 rounded-xl bg-bg-card border border-border">
+            <p className="text-text-secondary text-sm">
+              {finalPerc >= 90 ? "🏆 Eccellente! Padronanza completa." :
+               finalPerc >= 70 ? "✅ Buon risultato! Concetti fondamentali appresi." :
+               finalPerc >= 50 ? "📚 Sufficiente. Rivedi il Glossario." :
+               "🔄 Serve più studio. Rileggi il riassunto."}
             </p>
           </div>
-
-          {/* Barra punteggio */}
-          <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-1000 ${
-                percentage >= 70
-                  ? "bg-gradient-to-r from-green-500 to-emerald-400"
-                  : percentage >= 50
-                  ? "bg-gradient-to-r from-yellow-500 to-orange-400"
-                  : "bg-gradient-to-r from-red-500 to-rose-400"
-              }`}
-              style={{ width: `${percentage}%` }}
-            />
-          </div>
-
-          {/* Valutazione */}
-          <div className="px-4 py-3 rounded-xl bg-white/5 border border-white/10">
-            <p className="text-slate-300 text-sm">
-              {percentage >= 90
-                ? "🏆 Eccellente! Hai una padronanza completa dell'argomento."
-                : percentage >= 70
-                ? "✅ Buon risultato! Hai compreso i concetti fondamentali."
-                : percentage >= 50
-                ? "📚 Sufficiente. Rivedi i concetti chiave nel Glossario."
-                : "🔄 Hai bisogno di più studio. Rileggi il riassunto e ritenta."}
-            </p>
-          </div>
-
-          {/* Riepilogo risposte */}
           <div className="text-left space-y-2">
-            <p className="text-slate-400 text-sm font-medium mb-3">
-              Riepilogo risposte:
-            </p>
-            {answeredQuestions.map((aq, i) => (
+            <p className="text-text-muted text-sm font-medium">Riepilogo:</p>
+            {answers.map((a, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
-                {aq.correct ? (
-                  <CheckCircle className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
-                ) : (
-                  <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                )}
-                <span className="text-slate-400 line-clamp-1">{aq.question}</span>
+                {a.correct
+                  ? <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  : <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />}
+                <span className="text-text-muted line-clamp-1">{a.question}</span>
               </div>
             ))}
           </div>
-
-          <button
-            onClick={handleReset}
-            className="flex items-center gap-2 mx-auto px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-all"
-          >
-            <RotateCcw className="w-4 h-4" />
-            Riprova il Quiz
+          <button onClick={handleReset}
+            className="flex items-center gap-2 mx-auto px-6 py-3 rounded-xl bg-bg-card hover:bg-border border border-border text-text-primary transition-all">
+            <RotateCcw className="w-4 h-4" />Riprova il Quiz
           </button>
         </div>
       </div>
     );
   }
 
-  // ── Domanda corrente ──
   return (
     <div className="animate-fade-in space-y-4">
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3">
         <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
           <GraduationCap className="w-5 h-5 text-emerald-400" />
         </div>
         <div className="flex-1">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white">Simulazione Esame</h2>
-            <span className="text-slate-400 text-sm">
-              {currentQ + 1} / {quiz.length}
-            </span>
+            <h2 className="text-xl font-bold text-text-primary">Simulazione Esame</h2>
+            <span className="text-text-muted text-sm">{currentQ + 1} / {quiz.length}</span>
           </div>
-          {/* Barra progresso quiz */}
-          <div className="w-full h-1.5 bg-white/10 rounded-full mt-2 overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
-              style={{ width: `${((currentQ + 1) / quiz.length) * 100}%` }}
-            />
+          <div className="w-full h-1.5 bg-bg-card rounded-full mt-2 overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
+              style={{ width: `${((currentQ + 1) / quiz.length) * 100}%` }} />
           </div>
         </div>
       </div>
-
-      <div className="glass-card rounded-2xl p-6 space-y-5">
-        {/* Badge livello Bloom */}
+      <div className="card-glass rounded-2xl p-6 space-y-5">
         {question.bloomLevel && (
-          <span className="inline-block px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-medium">
+          <span className="inline-block px-2.5 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent text-xs font-medium">
             🎯 {question.bloomLevel}
           </span>
         )}
-
-        {/* Domanda */}
-        <h3 className="text-white font-semibold text-lg leading-snug">
-          {question.question}
-        </h3>
-
-        {/* Opzioni */}
+        <h3 className="text-text-primary font-semibold text-lg leading-snug">{question.question}</h3>
         <div className="space-y-2.5">
-          {question.options.map((option, index) => {
-            let optionClass =
-              "w-full text-left px-4 py-3.5 rounded-xl border text-sm transition-all duration-200 ";
-
-            if (selectedAnswer === null) {
-              optionClass +=
-                "border-white/10 bg-white/5 hover:border-indigo-500/40 hover:bg-indigo-500/5 text-slate-300 cursor-pointer";
-            } else if (index === question.correctAnswer) {
-              optionClass +=
-                "border-green-500/50 bg-green-500/10 text-green-300";
-            } else if (index === selectedAnswer && !isCorrect) {
-              optionClass += "border-red-500/50 bg-red-500/10 text-red-300";
-            } else {
-              optionClass +=
-                "border-white/5 bg-white/[0.02] text-slate-500 cursor-default";
-            }
-
+          {question.options.map((option, idx) => {
+            let cls = "w-full text-left px-4 py-3.5 rounded-xl border text-sm transition-all duration-200 ";
+            if (selectedAnswer === null)
+              cls += "border-border bg-bg-card hover:border-accent/40 hover:bg-accent/5 text-text-secondary cursor-pointer";
+            else if (idx === question.correctAnswer)
+              cls += "border-emerald-500/50 bg-emerald-500/10 text-emerald-300";
+            else if (idx === selectedAnswer && !isCorrect)
+              cls += "border-red-500/50 bg-red-500/10 text-red-300";
+            else
+              cls += "border-border/30 bg-bg-card/30 text-text-muted cursor-default";
             return (
-              <button
-                key={index}
-                onClick={() => handleAnswer(index)}
-                disabled={selectedAnswer !== null}
-                className={optionClass}
-              >
+              <button key={idx} onClick={() => handleAnswer(idx)} disabled={selectedAnswer !== null} className={cls}>
                 <div className="flex items-start gap-3">
                   <span className="shrink-0 w-6 h-6 rounded-full border border-current flex items-center justify-center text-xs font-bold">
-                    {String.fromCharCode(65 + index)}
+                    {String.fromCharCode(65 + idx)}
                   </span>
                   <span className="text-left leading-snug">{option}</span>
-                  {selectedAnswer !== null &&
-                    index === question.correctAnswer && (
-                      <CheckCircle className="w-4 h-4 text-green-400 ml-auto shrink-0 mt-0.5" />
-                    )}
-                  {selectedAnswer === index && !isCorrect && (
-                    <XCircle className="w-4 h-4 text-red-400 ml-auto shrink-0 mt-0.5" />
-                  )}
+                  {selectedAnswer !== null && idx === question.correctAnswer &&
+                    <CheckCircle className="w-4 h-4 text-emerald-400 ml-auto shrink-0 mt-0.5" />}
+                  {selectedAnswer === idx && !isCorrect &&
+                    <XCircle className="w-4 h-4 text-red-400 ml-auto shrink-0 mt-0.5" />}
                 </div>
               </button>
             );
           })}
         </div>
-
-        {/* Spiegazione */}
         {showExplanation && (
-          <div
-            className={`p-4 rounded-xl border text-sm leading-relaxed ${
-              isCorrect
-                ? "border-green-500/20 bg-green-500/5 text-green-200"
-                : "border-red-500/20 bg-red-500/5 text-red-200"
-            }`}
-          >
-            <p className="font-semibold mb-1">
+          <div className={`p-4 rounded-xl border text-sm leading-relaxed ${
+            isCorrect ? "border-emerald-500/20 bg-emerald-500/5" : "border-red-500/20 bg-red-500/5"}`}>
+            <p className={`font-semibold mb-1 ${isCorrect ? "text-emerald-400" : "text-red-400"}`}>
               {isCorrect ? "✅ Risposta corretta!" : "❌ Risposta errata"}
             </p>
-            <p className="text-slate-300 leading-relaxed">
-              {question.explanation}
-            </p>
+            <p className="text-text-secondary leading-relaxed">{question.explanation}</p>
           </div>
         )}
-
-        {/* Bottone avanti */}
         {selectedAnswer !== null && (
-          <button
-            onClick={handleNext}
-            className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold transition-all"
-          >
-            {currentQ + 1 >= quiz.length ? (
-              <>
-                <Trophy className="w-4 h-4" />
-                Vedi Risultato Finale
-              </>
-            ) : (
-              <>
-                Prossima Domanda
-                <ChevronRight className="w-4 h-4" />
-              </>
-            )}
+          <button onClick={handleNext}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-accent to-accent2 hover:opacity-90 text-white font-semibold transition-all">
+            {currentQ + 1 >= quiz.length ? <><Trophy className="w-4 h-4" />Vedi Risultato</> : <>Prossima<ChevronRight className="w-4 h-4" /></>}
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// COMPONENTE: QuizHistory — storico quiz di una chat
+// ============================================================
+function QuizHistory({ chatId, token }) {
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!chatId || !token) return;
+    setLoading(true);
+    getChatQuizResults(chatId, token)
+      .then(items => {
+        setResults(items.map(r => ({
+          ...r,
+          answers: typeof r.answers === "string" ? JSON.parse(r.answers) : r.answers,
+        })));
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [chatId, token]);
+
+  if (loading) return <div className="text-text-muted text-sm text-center py-4">Caricamento storico...</div>;
+  if (results.length === 0) return (
+    <div className="text-center text-text-muted text-sm py-8">
+      <BarChart2 className="w-8 h-8 mx-auto mb-2 opacity-30" />
+      Nessun quiz completato ancora per questa analisi.
+    </div>
+  );
+
+  const avg = Math.round(results.reduce((sum, r) => sum + r.percentage, 0) / results.length);
+  const best = Math.max(...results.map(r => r.percentage));
+
+  return (
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+          <BarChart2 className="w-5 h-5 text-yellow-400" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-text-primary">Progressi Quiz</h2>
+          <p className="text-text-muted text-sm">{results.length} tentativ{results.length === 1 ? "o" : "i"} completati</p>
+        </div>
+      </div>
+
+      {/* Stats veloci */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: "Media", value: `${avg}%`, icon: TrendingUp, color: "accent" },
+          { label: "Miglior score", value: `${best}%`, icon: Award, color: "yellow-400" },
+          { label: "Tentativi", value: results.length, icon: RotateCcw, color: "accent2" },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <div key={label} className="card-glass rounded-xl p-4 text-center">
+            <p className="text-2xl font-bold text-text-primary">{value}</p>
+            <p className="text-text-muted text-xs mt-1">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Lista tentativi */}
+      <div className="space-y-2">
+        {results.map((r, i) => (
+          <div key={r.id} className="card-glass rounded-xl p-4 flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+              r.percentage >= 70 ? "bg-emerald-500/20 text-emerald-400"
+              : r.percentage >= 50 ? "bg-yellow-500/20 text-yellow-400"
+              : "bg-red-500/20 text-red-400"}`}>
+              {r.percentage}%
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-text-primary text-sm font-medium">
+                  Tentativo #{results.length - i}
+                </span>
+                <span className="text-text-muted text-xs flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {new Date(r.created).toLocaleString("it-IT")}
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-bg-card rounded-full overflow-hidden">
+                <div className={`h-full rounded-full ${
+                  r.percentage >= 70 ? "bg-emerald-500" : r.percentage >= 50 ? "bg-yellow-500" : "bg-red-500"
+                }`} style={{ width: `${r.percentage}%` }} />
+              </div>
+              <p className="text-text-muted text-xs mt-1">{r.score} / {r.total} corrette</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// COMPONENTE: ChatDashboard — dashboard di una chat aperta
+// ============================================================
+function ChatDashboard({ chat, user, token, onBack }) {
+  const [activeTab, setActiveTab] = useState("summary");
+  const [quizKey, setQuizKey] = useState(0); // forza re-mount del quiz
+
+  const studyData = {
+    summary: chat.summary,
+    keyConcepts: typeof chat.key_concepts === "string" ? JSON.parse(chat.key_concepts) : chat.key_concepts,
+    quiz: typeof chat.quiz === "string" ? JSON.parse(chat.quiz) : chat.quiz,
+  };
+
+  const tabs = [
+    { id: "summary", label: "Studio Deep", icon: BookOpen },
+    { id: "glossary", label: "Glossario", icon: Layers },
+    { id: "quiz", label: "Simulazione Esame", icon: GraduationCap },
+    { id: "history", label: "Progressi", icon: BarChart2 },
+  ];
+
+  return (
+    <div className="flex-1 flex flex-col bg-bg-base">
+      {/* Header */}
+      <div className="border-b border-border px-6 py-4 flex items-center gap-4">
+        <button onClick={onBack}
+          className="p-2 rounded-lg hover:bg-bg-card text-text-muted hover:text-text-primary transition-all">
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-text-primary font-bold text-lg truncate">{chat.title}</h1>
+          <p className="text-text-muted text-xs flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            {new Date(chat.created).toLocaleString("it-IT")} · gemini
+          </p>
+        </div>
+        {activeTab === "quiz" && (
+          <button onClick={() => setQuizKey(k => k + 1)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-bg-card border border-border text-text-muted hover:text-text-primary text-xs transition-all">
+            <RotateCcw className="w-3 h-3" />Rifai quiz
+          </button>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-border px-6">
+        <div className="flex gap-1">
+          {tabs.map(tab => {
+            const Icon = tab.icon;
+            return (
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
+                  activeTab === tab.id
+                    ? "border-accent text-accent"
+                    : "border-transparent text-text-muted hover:text-text-primary"
+                }`}>
+                <Icon className="w-4 h-4" />
+                <span className="hidden sm:inline">{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Contenuto */}
+      <div className="flex-1 overflow-y-auto px-6 py-6 max-w-3xl w-full mx-auto">
+        {activeTab === "summary" && <SummaryTab summary={studyData.summary} />}
+        {activeTab === "glossary" && <GlossaryTab keyConcepts={studyData.keyConcepts} />}
+        {activeTab === "quiz" && (
+          <QuizTab
+            key={quizKey}
+            quiz={studyData.quiz}
+            chatId={chat.id}
+            userId={user.id}
+            token={token}
+            onQuizComplete={() => {
+              // Quando il quiz finisce, se torna alla scheda history si aggiorna
+            }}
+          />
+        )}
+        {activeTab === "history" && <QuizHistory chatId={chat.id} token={token} />}
+      </div>
+
+      {/* Footer */}
+      <div className="border-t border-border px-6 py-3 text-center text-text-muted text-xs">
+        gemini · Smart Study AI · Sessione persistente su PocketBase
       </div>
     </div>
   );
@@ -646,40 +874,94 @@ function QuizTab({ quiz }) {
 // COMPONENTE PRINCIPALE: App
 // ============================================================
 export default function App() {
-  const [studyData, setStudyData] = useState(null); // Dati sessione corrente
+  // ─── Auth state ───────────────────────────────────────────
+  const [token, setToken] = useState(() => localStorage.getItem("ssa_token") || null);
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ssa_user") || "null"); } catch { return null; }
+  });
+
+  // ─── Theme ───────────────────────────────────────────────
+  const savedTheme = user?.theme || localStorage.getItem(THEME_KEY) || "dark";
+  const { theme, setTheme } = useTheme(savedTheme);
+
+  // ─── Chat state ───────────────────────────────────────────
+  const [chats, setChats] = useState([]);
+  const [activeChat, setActiveChat] = useState(null); // chat aperta
+  const [view, setView] = useState("upload"); // "upload" | "dashboard"
+
+  // ─── Loading / error ──────────────────────────────────────
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState("summary");
 
-  // Carica sessione precedente da localStorage al mount
-  useEffect(() => {
+  // ─── Carica le chat dell'utente ───────────────────────────
+  const loadChats = useCallback(async () => {
+    if (!user || !token) return;
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.summary && parsed.keyConcepts && parsed.quiz) {
-          setStudyData(parsed);
-        }
-      }
-    } catch {
-      // Sessione corrotta, ignora
-      localStorage.removeItem(STORAGE_KEY);
+      const items = await getUserChats(user.id, token);
+      setChats(items);
+    } catch (e) {
+      console.error("Errore caricamento chat:", e);
     }
-  }, []);
+  }, [user, token]);
 
-  // Analizza il testo tramite Gemini
+  useEffect(() => { loadChats(); }, [loadChats]);
+
+  // ─── Sync tema su PocketBase quando cambia ────────────────
+  const handleToggleTheme = useCallback(async () => {
+    const newTheme = theme === "dark" ? "light" : "dark";
+    setTheme(newTheme);
+    if (user && token) {
+      try {
+        const updated = await updateUserTheme(user.id, newTheme, token);
+        const updatedUser = { ...user, theme: updated.theme };
+        setUser(updatedUser);
+        localStorage.setItem("ssa_user", JSON.stringify(updatedUser));
+      } catch (e) {
+        console.error("Errore aggiornamento tema:", e);
+      }
+    }
+  }, [theme, setTheme, user, token]);
+
+  // ─── Login ────────────────────────────────────────────────
+  const handleLogin = (newToken, record) => {
+    setToken(newToken);
+    setUser(record);
+    localStorage.setItem("ssa_token", newToken);
+    localStorage.setItem("ssa_user", JSON.stringify(record));
+    if (record.theme) setTheme(record.theme);
+  };
+
+  // ─── Logout ───────────────────────────────────────────────
+  const handleLogout = () => {
+    setToken(null); setUser(null);
+    setChats([]); setActiveChat(null);
+    setView("upload");
+    localStorage.removeItem("ssa_token");
+    localStorage.removeItem("ssa_user");
+  };
+
+  // ─── Nuova analisi ────────────────────────────────────────
   const handleAnalyze = async (text) => {
-    setIsLoading(true);
-    setError("");
-
+    setIsLoading(true); setError("");
     try {
       const data = await analyzeText(text);
 
-      // Salva in localStorage per persistenza tra refresh
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      // Genera un titolo automatico dalla prima frase del summary
+      const autoTitle = data.summary.split(/[.!?]/)[0].trim().slice(0, 60) || "Nuova analisi";
 
-      setStudyData(data);
-      setActiveTab("summary");
+      const newChat = await createChat(user.id, autoTitle, text, data, token);
+      // Ricarica lista chat
+      await loadChats();
+      // Apri direttamente la nuova chat
+      const fullChat = {
+        ...newChat,
+        title: autoTitle,
+        summary: data.summary,
+        key_concepts: JSON.stringify(data.keyConcepts),
+        quiz: JSON.stringify(data.quiz),
+      };
+      setActiveChat(fullChat);
+      setView("dashboard");
     } catch (err) {
       setError(err.message || "Errore durante l'analisi. Riprova.");
     } finally {
@@ -687,113 +969,87 @@ export default function App() {
     }
   };
 
-  // Reset sessione
-  const handleReset = () => {
-    setStudyData(null);
-    setActiveTab("summary");
-    localStorage.removeItem(STORAGE_KEY);
+  // ─── Seleziona chat dalla sidebar ─────────────────────────
+  const handleSelectChat = (chat) => {
+    setActiveChat(chat);
+    setView("dashboard");
   };
 
-  const tabs = [
-    { id: "summary", label: "Studio Deep", icon: BookOpen },
-    { id: "glossary", label: "Glossario", icon: Layers },
-    { id: "quiz", label: "Simulazione Esame", icon: GraduationCap },
-  ];
+  // ─── Elimina chat ─────────────────────────────────────────
+  const handleDeleteChat = async (chatId) => {
+    try {
+      await deleteChat(chatId, token);
+      if (activeChat?.id === chatId) { setActiveChat(null); setView("upload"); }
+      await loadChats();
+    } catch (e) {
+      console.error("Errore eliminazione:", e);
+    }
+  };
 
+  // ─── Rinomina chat ────────────────────────────────────────
+  const handleRenameChat = async (chatId, title) => {
+    try {
+      await updateChatTitle(chatId, title, token);
+      await loadChats();
+    } catch (e) {
+      console.error("Errore rinomina:", e);
+    }
+  };
+
+  // ─── Non autenticato ──────────────────────────────────────
+  if (!token || !user) {
+    return (
+      <AuthPanel
+        onLogin={handleLogin}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
+      />
+    );
+  }
+
+  // ─── App principale ───────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-950 text-white relative overflow-hidden">
-      {/* Background decorativo */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-indigo-600/10 blur-[120px]" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-violet-600/10 blur-[100px]" />
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wMykiLz48L3N2Zz4=')] opacity-50" />
-      </div>
-
-      {/* Loading overlay */}
+    <div className={`flex h-screen overflow-hidden bg-bg-base ${theme}`}>
       {isLoading && <LoadingScreen />}
 
+      {/* Sidebar */}
+      <Sidebar
+        chats={chats}
+        activeChatId={activeChat?.id}
+        onSelectChat={handleSelectChat}
+        onNewChat={() => { setActiveChat(null); setView("upload"); }}
+        onDeleteChat={handleDeleteChat}
+        onRenameChat={handleRenameChat}
+        user={user}
+        onLogout={handleLogout}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
+      />
+
       {/* Contenuto principale */}
-      <div className="relative z-10">
-        {!studyData ? (
-          // ── Vista Upload ──
-          <>
+      <main className="flex-1 flex flex-col overflow-hidden">
+        {view === "upload" || !activeChat ? (
+          <div className="flex-1 overflow-y-auto relative">
             <UploadPanel onAnalyze={handleAnalyze} isLoading={isLoading} />
             {error && (
-              <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-5 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm shadow-xl backdrop-blur-lg max-w-md">
+              <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-5 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm shadow-xl backdrop-blur-lg max-w-md z-40">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 {error}
-                <button onClick={() => setError("")} className="ml-2 text-red-400 hover:text-red-300">
+                <button onClick={() => setError("")} className="ml-2 hover:text-red-300">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
-          </>
-        ) : (
-          // ── Vista Dashboard ──
-          <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-            {/* Header dashboard */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
-                  <Brain className="w-6 h-6 text-indigo-400" />
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold text-white">
-                    Smart Study AI
-                  </h1>
-                  <p className="text-slate-400 text-sm">
-                    Dashboard di apprendimento generata
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={handleReset}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-sm transition-all"
-              >
-                <RotateCcw className="w-4 h-4" />
-                Nuova Analisi
-              </button>
-            </div>
-
-            {/* Tabs di navigazione */}
-            <div className="flex gap-1 p-1 rounded-xl bg-white/5 border border-white/10">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      activeTab === tab.id
-                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                        : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span className="hidden sm:inline">{tab.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Contenuto scheda attiva */}
-            <div className="min-h-[60vh]">
-              {activeTab === "summary" && (
-                <SummaryTab summary={studyData.summary} />
-              )}
-              {activeTab === "glossary" && (
-                <GlossaryTab keyConcepts={studyData.keyConcepts} />
-              )}
-              {activeTab === "quiz" && <QuizTab quiz={studyData.quiz} />}
-            </div>
-
-            {/* Footer */}
-            <div className="text-center text-slate-600 text-xs pt-4 border-t border-white/5">
-              Sessione salvata automaticamente · gemini-3-flash-preview · Smart Study AI
-            </div>
           </div>
+        ) : (
+          <ChatDashboard
+            chat={activeChat}
+            user={user}
+            token={token}
+            onBack={() => { setActiveChat(null); setView("upload"); }}
+          />
         )}
-      </div>
+      </main>
     </div>
   );
 }
