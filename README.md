@@ -37,9 +37,10 @@ cp .env.example .env
 Modifica `.env`:
 
 ```env
-VITE_GEMINI_API_KEY=la_tua_chiave_da_ https://aistudio.google.com/api-keys
+VITE_GEMINI_API_KEY=la_tua_chiave_
 VITE_POCKETBASE_URL=http://127.0.0.1:8090
 ```
+Ottieni la tua chiave da [API keys | Google AI Studio](https://aistudio.google.com/api-keys)
 
 ### 3. Avvia PocketBase
 
