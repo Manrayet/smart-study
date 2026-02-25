@@ -70,22 +70,30 @@ export async function updateUserTheme(userId, theme, token) {
 // CHATS
 // ============================================================
 
-/** Crea una nuova chat collegata all'utente */
-export async function createChat(userId, title, inputText, studyData, token) {
+/**
+ * Crea una nuova chat collegata all'utente.
+ * NOTA: input_text NON viene salvato — puo essere enorme (PDF interi)
+ * e causerebbe failed to create record per limiti del campo Text.
+ * key_concepts e quiz vanno inviati come oggetti JS (campo tipo JSON su PocketBase).
+ */
+export async function createChat(userId, title, studyData, token) {
+  const payload = {
+    user: userId,
+    title,
+    summary: studyData.summary,
+    key_concepts: studyData.keyConcepts,
+    quiz: studyData.quiz,
+  };
   const res = await fetch(`${PB_URL}/api/collections/chats/records`, {
     method: "POST",
     headers: authHeaders(token),
-    body: JSON.stringify({
-      user: userId,
-      title,
-      input_text: inputText,
-      summary: studyData.summary,
-      key_concepts: JSON.stringify(studyData.keyConcepts),
-      quiz: JSON.stringify(studyData.quiz),
-    }),
+    body: JSON.stringify(payload),
   });
   const data = await safeJson(res);
-  if (!res.ok) throw new Error(data.message || "Errore creazione chat");
+  if (!res.ok) {
+    const detail = data?.data ? JSON.stringify(data.data) : "";
+    throw new Error(`Errore creazione chat: ${data.message || "unknown"}${detail ? " — " + detail : ""}`);
+  }
   return data;
 }
 

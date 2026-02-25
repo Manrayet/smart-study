@@ -1,6 +1,8 @@
-# 🧠 Smart Study AI v2
+# 🧠 Smart Study AI
 
 Trasforma testi complessi o PDF in dashboard di apprendimento persistenti con **gemini**, storico quiz e tracciamento progressi.
+
+> **Nota sul progetto**: Smart Study AI è un progetto generato tramite AI con lo scopo esplicito di dare priorità al **problem solving da parte del programmatore**. Il codice è volutamente leggibile, commentato e strutturato in modo che lo sviluppatore possa concentrarsi sulla risoluzione di problemi reali — integrazione API, gestione dello stato, persistenza dati — senza partire da zero.
 
 ---
 
@@ -35,7 +37,7 @@ cp .env.example .env
 Modifica `.env`:
 
 ```env
-VITE_GEMINI_API_KEY=la_tua_chiave_da_aistudio.google.com
+VITE_GEMINI_API_KEY=la_tua_chiave_da_ https://aistudio.google.com/api-keys
 VITE_POCKETBASE_URL=http://127.0.0.1:8090
 ```
 
@@ -89,14 +91,13 @@ npm run dev
 
 **Campi:**
 
-| Campo        | Tipo     | Obbligatorio | Note                              |
-|--------------|----------|-------------|-----------------------------------|
-| `user`       | Relation | ✅           | Relazione con `users`, cascade delete |
-| `title`      | Text     | ✅           | Titolo della chat                 |
-| `input_text` | Text     | ✅           | Testo originale analizzato        |
-| `summary`    | Text     | ✅           | Riassunto generato da Gemini      |
-| `key_concepts` | Text  | ✅           | JSON stringificato array concetti |
-| `quiz`       | Text     | ✅           | JSON stringificato array domande  |
+| Campo        | Tipo     | Note                              |
+|--------------|----------|-----------------------------------|
+| `user`       | Relation | Relazione con `users`, cascade delete |
+| `title`      | Text     | Titolo della chat                 |
+| `summary`    | Text     | Riassunto generato da Gemini      |
+| `key_concepts` | Json  | Concetti chiave |
+| `quiz`       | Json     | Domande salvate per tenere traccia dei progressi  |
 
 **API Rules:**
 
@@ -116,14 +117,14 @@ npm run dev
 
 **Campi:**
 
-| Campo       | Tipo     | Obbligatorio | Note                                    |
-|-------------|----------|--------------|-----------------------------------------|
-| `chat`      | Relation | ✅            | Relazione con `chats`, cascade delete   |
-| `user`      | Relation | ✅            | Relazione con `users`                   |
-| `score`     | Number   | ✅            | Risposte corrette (es. 7)               |
-| `total`     | Number   | ✅            | Totale domande (es. 10)                 |
-| `percentage`| Number   | ✅            | Percentuale 0-100                       |
-| `answers`   | Text     | ✅            | JSON stringificato array risposte       |
+| Campo       | Tipo     | Note                                    |
+|-------------|----------|-----------------------------------------|
+| `chat`      | Relation | Relazione con `chats`, cascade delete   |
+| `user`      | Relation | Relazione con `users`                   |
+| `score`     | Number   | Risposte corrette (es. 7)               |
+| `total`     | Number   | Totale domande (es. 10)                 |
+| `percentage`| Number   | Percentuale 0-100                       |
+| `answers`   | Text     | JSON stringificato array risposte       |
 
 **API Rules:**
 
@@ -169,12 +170,3 @@ smart-study-ai/
 | **pdfjs-dist**        | Estrazione testo PDF lato client        |
 | **Tailwind CSS**      | Styling utility-first + CSS variables   |
 | **lucide-react**      | Icone                                   |
-
----
-
-## 🎨 Sistema temi
-
-Il tema è gestito tramite CSS custom properties (`--bg-base`, `--accent`, ecc.) applicate su `:root` (dark) e `html.light-mode` (light). Il valore viene:
-1. Applicato immediatamente al DOM (`classList.toggle`)
-2. Salvato in `localStorage` per il refresh
-3. Persistito su PocketBase nel campo `theme` dell'utente per sincronizzazione cross-device

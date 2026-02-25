@@ -166,7 +166,7 @@ function AuthPanel({ onLogin, theme, onToggleTheme }) {
 
           <button
             onClick={handleSubmit} disabled={loading}
-            className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-accent to-accent2 hover:opacity-90 disabled:opacity-50 text-white font-semibold transition-all shadow-lg"
+            className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl btn-primary font-semibold transition-all shadow-lg"
           >
             {loading ? <RotateCcw className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
             {mode === "login" ? "Accedi" : "Registrati"}
@@ -421,7 +421,7 @@ function UploadPanel({ onAnalyze, isLoading }) {
           )}
 
           <button onClick={handleSubmit} disabled={isLoading || !text.trim()}
-            className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-accent to-accent2 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold transition-all shadow-lg">
+            className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl btn-primary font-semibold transition-all shadow-lg">
             <Brain className="w-5 h-5" />
             Genera Dashboard di Apprendimento
             <ChevronRight className="w-4 h-4" />
@@ -679,7 +679,7 @@ function QuizTab({ quiz, chatId, userId, token, onQuizComplete }) {
         )}
         {selectedAnswer !== null && (
           <button onClick={handleNext}
-            className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-accent to-accent2 hover:opacity-90 text-white font-semibold transition-all">
+            className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl btn-primary font-semibold transition-all">
             {currentQ + 1 >= quiz.length ? <><Trophy className="w-4 h-4" />Vedi Risultato</> : <>Prossima<ChevronRight className="w-4 h-4" /></>}
           </button>
         )}
@@ -949,7 +949,7 @@ export default function App() {
       // Genera un titolo automatico dalla prima frase del summary
       const autoTitle = data.summary.split(/[.!?]/)[0].trim().slice(0, 60) || "Nuova analisi";
 
-      const newChat = await createChat(user.id, autoTitle, text, data, token);
+      const newChat = await createChat(user.id, autoTitle, data, token);
       // Ricarica lista chat
       await loadChats();
       // Apri direttamente la nuova chat

@@ -115,3 +115,17 @@ html.light-mode {
 }
 /* Escludi le transizioni sulle animazioni già definite */
 .animate-spin, .animate-pulse, .animate-fade-in { transition: none; }
+
+/* ─── Bottone primario con gradiente (tema-safe) ─────────────── */
+.btn-primary {
+  background: linear-gradient(to right, var(--accent), var(--accent2));
+  color: #ffffff !important;
+  border: none;
+}
+.btn-primary:hover {
+  opacity: 0.88;
+}
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
