@@ -26,7 +26,7 @@ const SYSTEM_INSTRUCTION = `Sei un assistente accademico di alto livello special
  
 ### REGOLE TECNICHE E DI FORMATO
 - Rispondi ESCLUSIVAMENTE con un oggetto JSON valido.
-- NON includere blocchi di codice Markdown (niente ``json), commenti o testo introduttivo/conclusivo.
+- NON includere blocchi di codice Markdown , commenti o testo introduttivo/conclusivo.
 - Lingua: Italiano professionale e accademico.
  
 ### STRUTTURA JSON RICHIESTA
