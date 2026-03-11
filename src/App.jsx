@@ -546,12 +546,12 @@ function QuizTab({ quiz, chatId, userId, token, onQuizComplete }) {
 
   const finishQuiz = async () => {
     setCompleted(true);
-    // Calcola score finale (già aggiornato se l'ultima era corretta)
-    const finalScore = answers.filter(a => a.correct).length + (isCorrect ? 0 : 0);
-    const realScore = answers.filter(a => a.correct).length;
+    // answers include già l'ultima risposta (aggiunta in handleAnswer prima di finishQuiz)
+    const finalAnswers = [...answers];
+    const realScore = finalAnswers.filter(a => a.correct).length;
     setSaving(true);
     try {
-      await saveQuizResult(chatId, userId, realScore + (isCorrect ? 1 : 0), quiz.length, [...answers], token);
+      await saveQuizResult(chatId, userId, realScore, quiz.length, finalAnswers, token);
       onQuizComplete?.();
     } catch (e) {
       console.error("Errore salvataggio quiz:", e);
@@ -771,7 +771,7 @@ function QuizHistory({ chatId, token }) {
                   r.percentage >= 70 ? "bg-emerald-500" : r.percentage >= 50 ? "bg-yellow-500" : "bg-red-500"
                 }`} style={{ width: `${r.percentage}%` }} />
               </div>
-              <p className="text-text-muted text-xs mt-1">{r.score} / {r.total} corrette</p>
+              <p className="text-text-muted text-xs mt-1">{r.number} / {r.total} corrette</p>
             </div>
           </div>
         ))}
