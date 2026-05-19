@@ -1,7 +1,7 @@
 // ============================================================
 // App.jsx — Smart Study AI v2
 // Architettura completa: Auth · Chat persistenti · Quiz tracking
-// Tema chiaro/scuro · PocketBase backend
+// Tema chiaro/scuro · Supabase backend
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -15,10 +15,12 @@ import {
 } from "lucide-react";
 import { analyzeText } from "./services/gemini";
 import {
-  loginUser, registerUser, updateUserTheme,
+  supabase, loginUser, registerUser, logoutUser,
+  getSession, onAuthChange, updateUserTheme,
   createChat, getUserChats, deleteChat, updateChatTitle,
-  saveQuizResult, getChatQuizResults, getUserQuizResults,
-} from "./services/pocketbase";
+  saveQuizResult, getChatQuizResults,
+  checkGenerationLimit, DAILY_GENERATION_LIMIT,
+} from "./services/supabase";
 
 // ─── PDF.js Worker ───────────────────────────────────────────
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -103,17 +105,22 @@ function AuthPanel({ onLogin, theme, onToggleTheme }) {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // "form" | "confirm" — schermata dopo la registrazione
+  const [screen, setScreen] = useState("form");
+  const [resendCooldown, setResendCooldown] = useState(0); // secondi rimasti prima di poter reinviare
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
 
   const handleSubmit = async () => {
     setError(""); setLoading(true);
     try {
       if (mode === "login") {
-        const { token, record } = await loginUser(email, password);
-        onLogin(token, record);
+        const { user } = await loginUser(email, password);
+        onLogin(user);
       } else {
         await registerUser(email, password, name);
-        const { token, record } = await loginUser(email, password);
-        onLogin(token, record);
+        // Mostra la schermata di conferma email invece di loggare subito
+        setScreen("confirm");
       }
     } catch (err) {
       setError(err.message);
@@ -122,8 +129,134 @@ function AuthPanel({ onLogin, theme, onToggleTheme }) {
     }
   };
 
+  // Reinvia email di conferma con cooldown 60s
+  const handleResend = async () => {
+    if (resendCooldown > 0) return;
+    setResendLoading(true); setResendSuccess(false);
+    try {
+      await resendConfirmationEmail(email);
+      setResendSuccess(true);
+      // Cooldown: conta alla rovescia da 60 a 0
+      setResendCooldown(60);
+      const timer = setInterval(() => {
+        setResendCooldown(prev => {
+          if (prev <= 1) { clearInterval(timer); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   const inputClass = "w-full px-4 py-3 rounded-xl bg-bg-card border border-border text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-all text-sm";
 
+  // ─── Schermata conferma email ──────────────────────────────
+  if (screen === "confirm") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-bg-base">
+        <button
+          onClick={onToggleTheme}
+          className="fixed top-4 right-4 p-2 rounded-lg bg-bg-card border border-border text-text-muted hover:text-text-primary transition-all"
+        >
+          {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </button>
+
+        <div className="w-full max-w-md space-y-6 text-center">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-sm font-medium">
+            <Sparkles className="w-4 h-4" />
+            gemini · Smart Study AI
+          </div>
+
+          <div className="card-glass rounded-2xl p-8 space-y-5">
+            {/* Icona animata */}
+            <div className="flex justify-center">
+              <div className="relative">
+                <div className="w-20 h-20 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center">
+                  <CheckCircle className="w-10 h-10 text-accent" />
+                </div>
+                <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-emerald-400 border-2 border-bg-base animate-pulse" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="text-2xl font-bold text-text-primary">
+                Controlla la tua email
+              </h2>
+              <p className="text-text-muted text-sm leading-relaxed">
+                Abbiamo inviato un link di conferma a
+              </p>
+              <p className="text-accent font-semibold text-sm break-all">
+                {email}
+              </p>
+            </div>
+
+            <div className="bg-bg-base/50 rounded-xl p-4 space-y-2 text-left">
+              <p className="text-text-secondary text-xs font-medium uppercase tracking-wide">Come procedere</p>
+              <ol className="space-y-1.5 text-text-muted text-sm">
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold shrink-0">1.</span>
+                  Apri la tua casella email
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold shrink-0">2.</span>
+                  Clicca sul link «Confirm your email»
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold shrink-0">3.</span>
+                  Torna qui e accedi con le tue credenziali
+                </li>
+              </ol>
+            </div>
+
+            <div className="space-y-3 pt-1">
+              <button
+                onClick={() => { setMode("login"); setScreen("form"); setPassword(""); setError(""); }}
+                className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl btn-primary font-semibold transition-all shadow-lg"
+              >
+                <Brain className="w-4 h-4" />
+                Vai al login
+              </button>
+
+              {/* Feedback reinvio */}
+              {resendSuccess && (
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
+                  <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                  Email reinviata! Controlla la tua casella di posta.
+                </div>
+              )}
+
+              <div className="flex items-center justify-between text-xs text-text-muted pt-1">
+                <span>Non hai ricevuto l&apos;email?</span>
+                <button
+                  onClick={handleResend}
+                  disabled={resendCooldown > 0 || resendLoading}
+                  className="text-accent hover:underline disabled:opacity-40 disabled:cursor-not-allowed font-medium flex items-center gap-1"
+                >
+                  {resendLoading
+                    ? "Invio..."
+                    : resendCooldown > 0
+                    ? `Riprova tra ${resendCooldown}s`
+                    : "Reinvia email"}
+                </button>
+              </div>
+
+              <button
+                onClick={() => { setScreen("form"); setMode("login"); setError(""); setResendSuccess(false); }}
+                className="text-text-muted hover:text-text-primary text-xs underline-offset-2 hover:underline transition-colors"
+              >
+                Torna al login
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Schermata login / registrazione ──────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-bg-base">
       <button
@@ -140,10 +273,10 @@ function AuthPanel({ onLogin, theme, onToggleTheme }) {
             gemini · Smart Study AI
           </div>
           <h1 className="text-4xl font-bold text-text-primary tracking-tight">
-            Bentornato
+            {mode === "login" ? "Bentornato" : "Crea account"}
           </h1>
           <p className="text-text-muted">
-            {mode === "login" ? "Accedi al tuo spazio di studio" : "Crea il tuo account"}
+            {mode === "login" ? "Accedi al tuo spazio di studio" : "Inizia a studiare con l’AI"}
           </p>
         </div>
 
@@ -317,7 +450,7 @@ function Sidebar({ chats, activeChatId, onSelectChat, onNewChat, onDeleteChat, o
 // ============================================================
 // COMPONENTE: UploadPanel
 // ============================================================
-function UploadPanel({ onAnalyze, isLoading }) {
+function UploadPanel({ onAnalyze, isLoading, genLimit }) {
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
@@ -420,10 +553,30 @@ function UploadPanel({ onAnalyze, isLoading }) {
             </div>
           )}
 
-          <button onClick={handleSubmit} disabled={isLoading || !text.trim()}
-            className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl btn-primary font-semibold transition-all shadow-lg">
+          {/* Badge limite giornaliero */}
+          {genLimit && (
+            <div className={`flex items-center justify-between px-4 py-2.5 rounded-xl border text-sm ${
+              genLimit.remaining === 0
+                ? "bg-red-500/10 border-red-500/20 text-red-400"
+                : genLimit.remaining <= 2
+                ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                : "bg-accent/10 border-accent/20 text-accent"
+            }`}>
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                Analisi rimanenti oggi
+              </span>
+              <span className="font-bold">
+                {genLimit.remaining} / {DAILY_GENERATION_LIMIT}
+              </span>
+            </div>
+          )}
+
+          <button onClick={handleSubmit}
+            disabled={isLoading || !text.trim() || genLimit?.remaining === 0}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl btn-primary font-semibold transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
             <Brain className="w-5 h-5" />
-            Genera Dashboard di Apprendimento
+            {genLimit?.remaining === 0 ? "Limite giornaliero raggiunto" : "Genera Dashboard di Apprendimento"}
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
@@ -507,7 +660,7 @@ function GlossaryTab({ keyConcepts }) {
 // ============================================================
 // COMPONENTE: QuizTab — con salvataggio risultati
 // ============================================================
-function QuizTab({ quiz, chatId, userId, token, onQuizComplete }) {
+function QuizTab({ quiz, chatId, userId, onQuizComplete }) {
   const [currentQ, setCurrentQ] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [showExplanation, setShowExplanation] = useState(false);
@@ -551,7 +704,7 @@ function QuizTab({ quiz, chatId, userId, token, onQuizComplete }) {
     const realScore = finalAnswers.filter(a => a.correct).length;
     setSaving(true);
     try {
-      await saveQuizResult(chatId, userId, realScore, quiz.length, finalAnswers, token);
+      await saveQuizResult(chatId, userId, realScore, quiz.length, finalAnswers);
       onQuizComplete?.();
     } catch (e) {
       console.error("Errore salvataggio quiz:", e);
@@ -691,14 +844,14 @@ function QuizTab({ quiz, chatId, userId, token, onQuizComplete }) {
 // ============================================================
 // COMPONENTE: QuizHistory — storico quiz di una chat
 // ============================================================
-function QuizHistory({ chatId, token }) {
+function QuizHistory({ chatId }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!chatId || !token) return;
+    if (!chatId) return;
     setLoading(true);
-    getChatQuizResults(chatId, token)
+    getChatQuizResults(chatId)
       .then(items => {
         setResults(items.map(r => ({
           ...r,
@@ -707,7 +860,7 @@ function QuizHistory({ chatId, token }) {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [chatId, token]);
+  }, [chatId]);
 
   if (loading) return <div className="text-text-muted text-sm text-center py-4">Caricamento storico...</div>;
   if (results.length === 0) return (
@@ -783,7 +936,7 @@ function QuizHistory({ chatId, token }) {
 // ============================================================
 // COMPONENTE: ChatDashboard — dashboard di una chat aperta
 // ============================================================
-function ChatDashboard({ chat, user, token, onBack }) {
+function ChatDashboard({ chat, user, onBack }) {
   const [activeTab, setActiveTab] = useState("summary");
   const [quizKey, setQuizKey] = useState(0); // forza re-mount del quiz
 
@@ -801,9 +954,9 @@ function ChatDashboard({ chat, user, token, onBack }) {
   ];
 
   return (
-    <div className="flex-1 flex flex-col bg-bg-base">
-      {/* Header */}
-      <div className="border-b border-border px-6 py-4 flex items-center gap-4">
+  <div className="flex-1 flex flex-col bg-bg-base min-h-0"> 
+    {/* Header */}
+    <div className="border-b border-border px-6 py-4 flex items-center gap-4">
         <button onClick={onBack}
           className="p-2 rounded-lg hover:bg-bg-card text-text-muted hover:text-text-primary transition-all">
           <ChevronLeft className="w-5 h-5" />
@@ -853,18 +1006,17 @@ function ChatDashboard({ chat, user, token, onBack }) {
             quiz={studyData.quiz}
             chatId={chat.id}
             userId={user.id}
-            token={token}
             onQuizComplete={() => {
               // Quando il quiz finisce, se torna alla scheda history si aggiorna
             }}
           />
         )}
-        {activeTab === "history" && <QuizHistory chatId={chat.id} token={token} />}
+        {activeTab === "history" && <QuizHistory chatId={chat.id} />}
       </div>
 
       {/* Footer */}
       <div className="border-t border-border px-6 py-3 text-center text-text-muted text-xs">
-        gemini · Smart Study AI · Sessione persistente su PocketBase
+        gemini · Smart Study AI · Cloud su Supabase
       </div>
     </div>
   );
@@ -875,90 +1027,113 @@ function ChatDashboard({ chat, user, token, onBack }) {
 // ============================================================
 export default function App() {
   // ─── Auth state ───────────────────────────────────────────
-  const [token, setToken] = useState(() => localStorage.getItem("ssa_token") || null);
-  const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ssa_user") || "null"); } catch { return null; }
-  });
+  // Con Supabase non gestiamo più token manualmente:
+  // la sessione è gestita internamente dal client Supabase
+  const [user, setUser] = useState(null);
+  const [sessionReady, setSessionReady] = useState(false); // evita flash di login
 
   // ─── Theme ───────────────────────────────────────────────
-  const savedTheme = user?.theme || localStorage.getItem(THEME_KEY) || "dark";
+  const savedTheme = user?.user_metadata?.theme || localStorage.getItem(THEME_KEY) || "dark";
   const { theme, setTheme } = useTheme(savedTheme);
 
   // ─── Chat state ───────────────────────────────────────────
   const [chats, setChats] = useState([]);
-  const [activeChat, setActiveChat] = useState(null); // chat aperta
-  const [view, setView] = useState("upload"); // "upload" | "dashboard"
+  const [activeChat, setActiveChat] = useState(null);
+  const [view, setView] = useState("upload");
 
   // ─── Loading / error ──────────────────────────────────────
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // ─── Carica le chat dell'utente ───────────────────────────
+  // ─── Rate limit state ─────────────────────────────────────
+  const [genLimit, setGenLimit] = useState({ count: 0, remaining: DAILY_GENERATION_LIMIT, canGenerate: true });
+
+  // ─── Ripristina sessione Supabase al mount ────────────────
+  useEffect(() => {
+    getSession().then(session => {
+      if (session?.user) {
+        setUser(session.user);
+        if (session.user.user_metadata?.theme) setTheme(session.user.user_metadata.theme);
+      }
+      setSessionReady(true);
+    });
+
+    // Ascolta cambiamenti di sessione (login/logout)
+    const sub = onAuthChange(session => {
+      setUser(session?.user || null);
+      if (!session) { setChats([]); setActiveChat(null); setView("upload"); }
+    });
+    return () => sub.unsubscribe();
+  }, []);
+
+  // ─── Carica chat + rate limit quando l'utente è pronto ───
   const loadChats = useCallback(async () => {
-    if (!user || !token) return;
+    if (!user) return;
     try {
-      const items = await getUserChats(user.id, token);
+      const [items, limit] = await Promise.all([
+        getUserChats(user.id),
+        checkGenerationLimit(user.id),
+      ]);
       setChats(items);
+      setGenLimit(limit);
     } catch (e) {
       console.error("Errore caricamento chat:", e);
     }
-  }, [user, token]);
+  }, [user]);
 
   useEffect(() => { loadChats(); }, [loadChats]);
 
-  // ─── Sync tema su PocketBase quando cambia ────────────────
+  // ─── Sync tema su Supabase quando cambia ─────────────────
   const handleToggleTheme = useCallback(async () => {
     const newTheme = theme === "dark" ? "light" : "dark";
     setTheme(newTheme);
-    if (user && token) {
+    if (user) {
       try {
-        const updated = await updateUserTheme(user.id, newTheme, token);
-        const updatedUser = { ...user, theme: updated.theme };
-        setUser(updatedUser);
-        localStorage.setItem("ssa_user", JSON.stringify(updatedUser));
+        await updateUserTheme(user.id, newTheme);
       } catch (e) {
         console.error("Errore aggiornamento tema:", e);
       }
     }
-  }, [theme, setTheme, user, token]);
+  }, [theme, setTheme, user]);
 
   // ─── Login ────────────────────────────────────────────────
-  const handleLogin = (newToken, record) => {
-    setToken(newToken);
-    setUser(record);
-    localStorage.setItem("ssa_token", newToken);
-    localStorage.setItem("ssa_user", JSON.stringify(record));
-    if (record.theme) setTheme(record.theme);
+  const handleLogin = (supabaseUser) => {
+    setUser(supabaseUser);
+    if (supabaseUser.user_metadata?.theme) setTheme(supabaseUser.user_metadata.theme);
   };
 
   // ─── Logout ───────────────────────────────────────────────
-  const handleLogout = () => {
-    setToken(null); setUser(null);
-    setChats([]); setActiveChat(null);
+  const handleLogout = async () => {
+    await logoutUser();
+    setUser(null); setChats([]); setActiveChat(null);
     setView("upload");
-    localStorage.removeItem("ssa_token");
-    localStorage.removeItem("ssa_user");
   };
 
   // ─── Nuova analisi ────────────────────────────────────────
   const handleAnalyze = async (text) => {
     setIsLoading(true); setError("");
     try {
+      // ── Controlla il limite giornaliero prima di chiamare Gemini ──
+      const limit = await checkGenerationLimit(user.id);
+      if (!limit.canGenerate) {
+        throw new Error(
+          `Hai raggiunto il limite di ${DAILY_GENERATION_LIMIT} analisi al giorno. Riprova domani.`
+        );
+      }
+
       const data = await analyzeText(text);
 
       // Genera un titolo automatico dalla prima frase del summary
       const autoTitle = data.summary.split(/[.!?]/)[0].trim().slice(0, 60) || "Nuova analisi";
 
-      const newChat = await createChat(user.id, autoTitle, data, token);
-      // Ricarica lista chat
-      await loadChats();
-      // Apri direttamente la nuova chat
+      // Supabase non richiede token esplicito: la sessione è gestita dal client
+      const newChat = await createChat(user.id, autoTitle, data);
+      await loadChats(); // ricarica lista chat e aggiorna il contatore
       const fullChat = {
         ...newChat,
-        title: autoTitle,
         summary: data.summary,
-        key_concepts: JSON.stringify(data.keyConcepts),
-        quiz: JSON.stringify(data.quiz),
+        key_concepts: newChat.key_concepts ?? data.keyConcepts,
+        quiz: newChat.quiz ?? data.quiz,
       };
       setActiveChat(fullChat);
       setView("dashboard");
@@ -978,7 +1153,7 @@ export default function App() {
   // ─── Elimina chat ─────────────────────────────────────────
   const handleDeleteChat = async (chatId) => {
     try {
-      await deleteChat(chatId, token);
+      await deleteChat(chatId);
       if (activeChat?.id === chatId) { setActiveChat(null); setView("upload"); }
       await loadChats();
     } catch (e) {
@@ -989,7 +1164,7 @@ export default function App() {
   // ─── Rinomina chat ────────────────────────────────────────
   const handleRenameChat = async (chatId, title) => {
     try {
-      await updateChatTitle(chatId, title, token);
+      await updateChatTitle(chatId, title);
       await loadChats();
     } catch (e) {
       console.error("Errore rinomina:", e);
@@ -997,7 +1172,8 @@ export default function App() {
   };
 
   // ─── Non autenticato ──────────────────────────────────────
-  if (!token || !user) {
+  if (!sessionReady) return null; // evita flash di login durante ripristino sessione
+  if (!user) {
     return (
       <AuthPanel
         onLogin={handleLogin}
@@ -1030,7 +1206,7 @@ export default function App() {
       <main className="flex-1 flex flex-col overflow-hidden">
         {view === "upload" || !activeChat ? (
           <div className="flex-1 overflow-y-auto relative">
-            <UploadPanel onAnalyze={handleAnalyze} isLoading={isLoading} />
+            <UploadPanel onAnalyze={handleAnalyze} isLoading={isLoading} genLimit={genLimit} />
             {error && (
               <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-5 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm shadow-xl backdrop-blur-lg max-w-md z-40">
                 <AlertCircle className="w-4 h-4 shrink-0" />
@@ -1045,7 +1221,6 @@ export default function App() {
           <ChatDashboard
             chat={activeChat}
             user={user}
-            token={token}
             onBack={() => { setActiveChat(null); setView("upload"); }}
           />
         )}
