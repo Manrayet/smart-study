@@ -1,9 +1,3 @@
-// ============================================================
-// App.jsx — Smart Study AI v2
-// Architettura completa: Auth · Chat persistenti · Quiz tracking
-// Tema chiaro/scuro · Supabase backend
-// ============================================================
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import {
@@ -56,6 +50,7 @@ function useTheme(initialTheme = "dark") {
   const setTheme = (t) => setThemeState(t);
   return { theme, setTheme };
 }
+
 
 // ============================================================
 // COMPONENTE: LoadingScreen
@@ -153,109 +148,7 @@ function AuthPanel({ onLogin, theme, onToggleTheme }) {
 
   const inputClass = "w-full px-4 py-3 rounded-xl bg-bg-card border border-border text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-all text-sm";
 
-  // ─── Schermata conferma email ──────────────────────────────
-  if (screen === "confirm") {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-bg-base">
-        <button
-          onClick={onToggleTheme}
-          className="fixed top-4 right-4 p-2 rounded-lg bg-bg-card border border-border text-text-muted hover:text-text-primary transition-all"
-        >
-          {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </button>
-
-        <div className="w-full max-w-md space-y-6 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-sm font-medium">
-            <Sparkles className="w-4 h-4" />
-            gemini · Smart Study AI
-          </div>
-
-          <div className="card-glass rounded-2xl p-8 space-y-5">
-            {/* Icona animata */}
-            <div className="flex justify-center">
-              <div className="relative">
-                <div className="w-20 h-20 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center">
-                  <CheckCircle className="w-10 h-10 text-accent" />
-                </div>
-                <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-emerald-400 border-2 border-bg-base animate-pulse" />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold text-text-primary">
-                Controlla la tua email
-              </h2>
-              <p className="text-text-muted text-sm leading-relaxed">
-                Abbiamo inviato un link di conferma a
-              </p>
-              <p className="text-accent font-semibold text-sm break-all">
-                {email}
-              </p>
-            </div>
-
-            <div className="bg-bg-base/50 rounded-xl p-4 space-y-2 text-left">
-              <p className="text-text-secondary text-xs font-medium uppercase tracking-wide">Come procedere</p>
-              <ol className="space-y-1.5 text-text-muted text-sm">
-                <li className="flex items-start gap-2">
-                  <span className="text-accent font-bold shrink-0">1.</span>
-                  Apri la tua casella email
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-accent font-bold shrink-0">2.</span>
-                  Clicca sul link «Confirm your email»
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-accent font-bold shrink-0">3.</span>
-                  Torna qui e accedi con le tue credenziali
-                </li>
-              </ol>
-            </div>
-
-            <div className="space-y-3 pt-1">
-              <button
-                onClick={() => { setMode("login"); setScreen("form"); setPassword(""); setError(""); }}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl btn-primary font-semibold transition-all shadow-lg"
-              >
-                <Brain className="w-4 h-4" />
-                Vai al login
-              </button>
-
-              {/* Feedback reinvio */}
-              {resendSuccess && (
-                <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
-                  <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-                  Email reinviata! Controlla la tua casella di posta.
-                </div>
-              )}
-
-              <div className="flex items-center justify-between text-xs text-text-muted pt-1">
-                <span>Non hai ricevuto l&apos;email?</span>
-                <button
-                  onClick={handleResend}
-                  disabled={resendCooldown > 0 || resendLoading}
-                  className="text-accent hover:underline disabled:opacity-40 disabled:cursor-not-allowed font-medium flex items-center gap-1"
-                >
-                  {resendLoading
-                    ? "Invio..."
-                    : resendCooldown > 0
-                    ? `Riprova tra ${resendCooldown}s`
-                    : "Reinvia email"}
-                </button>
-              </div>
-
-              <button
-                onClick={() => { setScreen("form"); setMode("login"); setError(""); setResendSuccess(false); }}
-                className="text-text-muted hover:text-text-primary text-xs underline-offset-2 hover:underline transition-colors"
-              >
-                Torna al login
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+ 
   // ─── Schermata login / registrazione ──────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-bg-base">
@@ -790,7 +683,7 @@ function QuizTab({ quiz, chatId, userId, onQuizComplete }) {
       <div className="card-glass rounded-2xl p-6 space-y-5">
         {question.bloomLevel && (
           <span className="inline-block px-2.5 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent text-xs font-medium">
-            🎯 {question.bloomLevel}
+            {question.bloomLevel}
           </span>
         )}
         <h3 className="text-text-primary font-semibold text-lg leading-snug">{question.question}</h3>
@@ -825,7 +718,7 @@ function QuizTab({ quiz, chatId, userId, onQuizComplete }) {
           <div className={`p-4 rounded-xl border text-sm leading-relaxed ${
             isCorrect ? "border-emerald-500/20 bg-emerald-500/5" : "border-red-500/20 bg-red-500/5"}`}>
             <p className={`font-semibold mb-1 ${isCorrect ? "text-emerald-400" : "text-red-400"}`}>
-              {isCorrect ? "✅ Risposta corretta!" : "❌ Risposta errata"}
+              {isCorrect ? "Risposta corretta!" : "Risposta errata"}
             </p>
             <p className="text-text-secondary leading-relaxed">{question.explanation}</p>
           </div>
@@ -1027,8 +920,7 @@ function ChatDashboard({ chat, user, onBack }) {
 // ============================================================
 export default function App() {
   // ─── Auth state ───────────────────────────────────────────
-  // Con Supabase non gestiamo più token manualmente:
-  // la sessione è gestita internamente dal client Supabase
+  
   const [user, setUser] = useState(null);
   const [sessionReady, setSessionReady] = useState(false); // evita flash di login
 
