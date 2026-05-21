@@ -23,7 +23,9 @@ export const DAILY_GENERATION_LIMIT = 5;
 // AUTH
 // ============================================================
 
-/** Registra un nuovo utente con email e password */
+/** Registra un nuovo utente con email e password.
+ *  Funziona con la conferma email DISATTIVATA su Supabase:
+ *  restituisce { user, session } gia' attivi, pronti per il login immediato. */
 export async function registerUser(email, password, name) {
   const { data, error } = await supabase.auth.signUp({
     email,

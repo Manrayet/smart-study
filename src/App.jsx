@@ -100,11 +100,6 @@ function AuthPanel({ onLogin, theme, onToggleTheme }) {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  // "form" | "confirm" — schermata dopo la registrazione
-  const [screen, setScreen] = useState("form");
-  const [resendCooldown, setResendCooldown] = useState(0); // secondi rimasti prima di poter reinviare
-  const [resendLoading, setResendLoading] = useState(false);
-  const [resendSuccess, setResendSuccess] = useState(false);
 
   const handleSubmit = async () => {
     setError(""); setLoading(true);
@@ -113,36 +108,14 @@ function AuthPanel({ onLogin, theme, onToggleTheme }) {
         const { user } = await loginUser(email, password);
         onLogin(user);
       } else {
-        await registerUser(email, password, name);
-        // Mostra la schermata di conferma email invece di loggare subito
-        setScreen("confirm");
+        // Conferma email disattivata su Supabase: la sessione è già attiva dopo il signup
+        const { user } = await registerUser(email, password, name);
+        onLogin(user);
       }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Reinvia email di conferma con cooldown 60s
-  const handleResend = async () => {
-    if (resendCooldown > 0) return;
-    setResendLoading(true); setResendSuccess(false);
-    try {
-      await resendConfirmationEmail(email);
-      setResendSuccess(true);
-      // Cooldown: conta alla rovescia da 60 a 0
-      setResendCooldown(60);
-      const timer = setInterval(() => {
-        setResendCooldown(prev => {
-          if (prev <= 1) { clearInterval(timer); return 0; }
-          return prev - 1;
-        });
-      }, 1000);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setResendLoading(false);
     }
   };
 
@@ -907,10 +880,6 @@ function ChatDashboard({ chat, user, onBack }) {
         {activeTab === "history" && <QuizHistory chatId={chat.id} />}
       </div>
 
-      {/* Footer */}
-      <div className="border-t border-border px-6 py-3 text-center text-text-muted text-xs">
-        gemini · Smart Study AI · Cloud su Supabase
-      </div>
     </div>
   );
 }

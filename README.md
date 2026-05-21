@@ -8,14 +8,15 @@ Trasforma testi complessi o PDF in dashboard di apprendimento persistenti con **
 
 ## ✨ Funzionalità
 
-- **Auth completa** — Registrazione e login utenti via PocketBase
+ **Auth completa** — Registrazione e login utenti via Supabase Auth (email + password, con verifica email)
 - **Chat separate** — Ogni analisi è una chat indipendente, riprendibile in qualsiasi momento
-- **Studio Deep** — Riassunto accademico strutturato in paragrafi
-- **Glossario** — Concetti chiave espandibili con esempi
+- **Studio Deep** — Riassunto accademico strutturato in paragrafi generato da Gemini AI
+- **Glossario** — Concetti chiave espandibili con definizioni e esempi concreti
 - **Quiz interattivo** — 10 domande basate sulla Tassonomia di Bloom, con feedback immediato
 - **Storico quiz** — Ogni tentativo viene salvato separatamente con percentuale, data e riepilogo risposte
 - **Progressi** — Statistiche per chat: media, miglior score, numero tentativi
-- **Tema chiaro/scuro** — Toggle persistente, salvato nel profilo utente su PocketBase
+- **Rate limiting** — Limite di 5 generazioni AI al giorno per utente (tracciato su Supabase)
+- **Tema chiaro/scuro** — Toggle persistente, salvato nel profilo utente su Supabase
 - **Upload PDF** — Estrazione testo lato client con `pdfjs-dist`
 
 ---
@@ -37,24 +38,33 @@ cp .env.example .env
 Modifica `.env`:
 
 ```env
-VITE_GEMINI_API_KEY=la_tua_chiave_
-VITE_POCKETBASE_URL=http://127.0.0.1:8090
-```
-Ottieni la tua chiave da [API keys | Google AI Studio](https://aistudio.google.com/api-keys)
-
-### 3. Avvia PocketBase
-
-Scarica PocketBase da [pocketbase.io](https://pocketbase.io/docs/) e avvialo:
-
-```bash
-./pocketbase serve
+VITE_GEMINI_API_KEY=la_tua_chiave_gemini
+VITE_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-Apri l'admin UI su: **http://127.0.0.1:8090/_/**
+- Chiave Gemini: [API keys | Google AI Studio](https://aistudio.google.com/api-keys)
+- URL e chiave Supabase: Dashboard Supabase → **Settings → API**
 
-### 4. Crea le collezioni (vedi sezione dedicata sotto)
+### 3. Configura Supabase
 
-### 5. Avvia il frontend
+#### Setup con SQL Editor
+
+Scarica il file [`supabase_setup.sql`](./supabase_setup.sql), poi aprilo nell'**SQL Editor** del tuo progetto Supabase (Dashboard → SQL Editor → New query) e clicca **Run**.
+
+Lo script crea in un colpo solo:
+- le tre tabelle con i tipi corretti
+- il trigger che genera il profilo utente automaticamente al signup
+- tutte le policy **Row Level Security (RLS)**
+
+#### Disattiva la conferma email su Supabase
+ 
+Nel pannello Supabase: **Authentication → Providers → Email**, disattiva l'opzione **"Confirm email"**.
+ 
+Senza questo passaggio la registrazione non effettua il login automatico: l'utente verrebbe bloccato in attesa di una email di conferma che non viene gestita dall'app.
+ 
+
+### 4. Avvia il frontend
 
 ```bash
 npm run dev
@@ -62,80 +72,45 @@ npm run dev
 
 ---
 
-## 🗄️ PocketBase — Collezioni e API Rules
+## 🗄️ Supabase — Tabelle, RLS e SQL Setup
 
-### Collezione: `users` (built-in, estesa)
+Il progetto usa tre tabelle su Supabase: `profiles`, `chats` e `quiz_results`.
 
-> PocketBase include già la collezione `users`. Aggiungi solo il campo custom `theme`.
+### Tabelle riepilogo
 
-**Campi aggiuntivi da aggiungere:**
+#### `profiles` (estende `auth.users`)
 
-| Campo | Tipo    | Default | Note                     |
-|-------|---------|---------|--------------------------|
-| `theme` | Text  | `dark`  | Valori: `dark` \| `light` |
+| Campo | Tipo | Default | Note |
+|-------|------|---------|------|
+| `id` | UUID (PK) | — | Riferimento a `auth.users` |
+| `name` | Text | — | Popolato automaticamente dal trigger |
+| `theme` | Text | `dark` | Valori: `dark` \| `light` |
+| `created_at` | Timestamptz | `NOW()` | |
 
-**API Rules:**
+#### `chats`
 
-| Regola             | Valore                    |
-|--------------------|---------------------------|
-| List rule          | `id = @request.auth.id`   |
-| View rule          | `id = @request.auth.id`   |
-| Create rule        | *(vuoto — pubblica)*      |
-| Update rule        | `id = @request.auth.id`   |
-| Delete rule        | `id = @request.auth.id`   |
+| Campo | Tipo | Note |
+|-------|------|------|
+| `id` | UUID (PK) | Auto-generato |
+| `user_id` | UUID (FK) | Riferimento a `auth.users`, cascade delete |
+| `title` | Text | Titolo della chat |
+| `summary` | Text | Riassunto generato da Gemini |
+| `key_concepts` | JSONB | Array di concetti chiave |
+| `quiz` | JSONB | Array di domande quiz |
+| `created_at` | Timestamptz | Usato per il rate limiting giornaliero |
 
----
+#### `quiz_results`
 
-### Collezione: `chats`
-
-**Crea nuova collezione** con nome `chats`.
-
-**Campi:**
-
-| Campo        | Tipo     | Note                              |
-|--------------|----------|-----------------------------------|
-| `user`       | Relation | Relazione con `users`, cascade delete |
-| `title`      | Text     | Titolo della chat                 |
-| `summary`    | Text     | Riassunto generato da Gemini      |
-| `key_concepts` | Json  | Concetti chiave |
-| `quiz`       | Json     | Domande salvate per tenere traccia dei progressi  |
-
-**API Rules:**
-
-| Regola      | Valore                              |
-|-------------|-------------------------------------|
-| List rule   | `user = @request.auth.id`           |
-| View rule   | `user = @request.auth.id`           |
-| Create rule | `@request.auth.id != ""`            |
-| Update rule | `user = @request.auth.id`           |
-| Delete rule | `user = @request.auth.id`           |
-
----
-
-### Collezione: `quiz_results`
-
-**Crea nuova collezione** con nome `quiz_results`.
-
-**Campi:**
-
-| Campo       | Tipo     | Note                                    |
-|-------------|----------|-----------------------------------------|
-| `chat`      | Relation | Relazione con `chats`, cascade delete   |
-| `user`      | Relation | Relazione con `users`                   |
-| `score`     | Number   | Risposte corrette (es. 7)               |
-| `total`     | Number   | Totale domande (es. 10)                 |
-| `percentage`| Number   | Percentuale 0-100                       |
-| `answers`   | Text     | JSON stringificato array risposte       |
-
-**API Rules:**
-
-| Regola      | Valore                              |
-|-------------|-------------------------------------|
-| List rule   | `user = @request.auth.id`           |
-| View rule   | `user = @request.auth.id`           |
-| Create rule | `@request.auth.id != ""`            |
-| Update rule | `user = @request.auth.id`           |
-| Delete rule | `user = @request.auth.id`           |
+| Campo | Tipo | Note |
+|-------|------|------|
+| `id` | UUID (PK) | Auto-generato |
+| `chat_id` | UUID (FK) | Riferimento a `chats`, cascade delete |
+| `user_id` | UUID (FK) | Riferimento a `auth.users` |
+| `score` | Integer | Risposte corrette (es. 7) |
+| `total` | Integer | Totale domande (es. 10) |
+| `percentage` | Integer | Percentuale 0–100 |
+| `answers` | JSONB | Array `{ question, correct, selectedIndex }` |
+| `created_at` | Timestamptz | |
 
 ---
 
@@ -145,11 +120,14 @@ npm run dev
 smart-study-ai/
 ├── src/
 │   ├── services/
-│   │   ├── gemini.js        # Integrazione gemini-3-flash-preview
-│   │   └── pocketbase.js    # Auth, chat, quiz results, tema
+│   │   ├── gemini.js        # Integrazione Google Gemini 3 Flash
+│   │   └── supabase.js      # Auth, profili, chat, quiz results, rate limiting
 │   ├── App.jsx              # UI completa: auth, sidebar, dashboard
 │   ├── main.jsx             # Entry point React
 │   └── index.css            # Tailwind + tema chiaro/scuro (CSS vars)
+├── public/
+│   └── favicon.png
+├── supabase_setup.sql       # Script SQL per creare tabelle, trigger e RLS
 ├── index.html
 ├── vite.config.js
 ├── tailwind.config.js
