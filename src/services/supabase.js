@@ -70,13 +70,20 @@ export function onAuthChange(callback) {
   return data.subscription; // chiama .unsubscribe() per rimuovere il listener
 }
 
-/** Aggiorna il tema dell'utente nel suo profilo */
+/** Aggiorna il tema dell'utente nel suo profilo E nei metadati di auth */
 export async function updateUserTheme(userId, theme) {
-  const { error } = await supabase
+  // Aggiorna la tabella profiles
+  const { error: profileError } = await supabase
     .from("profiles")
     .update({ theme })
     .eq("id", userId);
-  if (error) throw new Error(error.message);
+  if (profileError) throw new Error(profileError.message);
+
+  // Aggiorna i metadati di auth per sincronizzare
+  const { error: authError } = await supabase.auth.updateUser({
+    data: { theme },
+  });
+  if (authError) throw new Error(authError.message);
 }
 
 /** Recupera il profilo utente (nome, tema) */
