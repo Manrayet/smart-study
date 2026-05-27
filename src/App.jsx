@@ -841,8 +841,8 @@ function QuizHistory({ chatId }) {
                 </span>
                 <span className="text-text-muted text-[10px] sm:text-xs flex items-center gap-1 shrink-0">
                   <Clock className="w-3 h-3" />
-                  <span className="hidden sm:inline">{new Date(r.created).toLocaleString("it-IT")}</span>
-                  <span className="sm:hidden">{new Date(r.created).toLocaleDateString("it-IT")}</span>
+                  <span className="hidden sm:inline">{new Date(r.created_at).toLocaleString("it-IT")}</span>
+                  <span className="sm:hidden">{new Date(r.created_at).toLocaleDateString("it-IT")}</span>
                 </span>
               </div>
               <div className="w-full h-1.5 bg-bg-card rounded-full overflow-hidden">
